@@ -1,0 +1,196 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import dynamic from "next/dynamic";
+
+// Dynamic import for Lottie player (SSR disabled)
+const DotLottiePlayer = dynamic(
+  () => import("@dotlottie/react-player").then((mod) => mod.DotLottiePlayer),
+  { ssr: false }
+);
+
+export default function LoginPage() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("registered") === "true") {
+      setSuccessMsg("Account created successfully! Please login to your account.");
+    }
+  }, []);
+
+  async function handleLogin() {
+    if (!email || !password) {
+      setError("Please enter both email and password");
+      return;
+    }
+    setLoading(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const result = await res.json();
+      setLoading(false);
+
+      if (!result.success) {
+        setError(result.error);
+      } else {
+        window.location.href = "/";
+      }
+    } catch (err) {
+      setLoading(false);
+      setError("An unexpected error occurred. Please try again.");
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-[#fafaf9] flex items-center justify-center p-4 sm:p-6 lg:p-8 font-sans selection:bg-amber-200">
+      {/* Background decorative blobs */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-[10%] -left-[10%] w-[45%] h-[45%] rounded-full bg-amber-100/40 blur-[120px]"></div>
+        <div className="absolute -bottom-[10%] -right-[10%] w-[45%] h-[45%] rounded-full bg-amber-50 blur-[120px]"></div>
+      </div>
+
+      {/* Main container: split on desktop, stacked on mobile */}
+      <div className="relative w-full max-w-5xl mx-auto">
+        <div className="bg-white rounded-[2.5rem] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.06)] border border-gray-100 overflow-hidden backdrop-blur-sm">
+          <div className="flex flex-col lg:flex-row">
+            {/* LEFT SIDE - Lottie Animation (desktop left, mobile top) */}
+            <div className="flex-1 bg-gradient-to-br from-amber-50/50 to-white p-8 lg:p-12 flex flex-col items-center justify-center">
+              <div className="w-64 h-64 sm:w-80 sm:h-80 drop-shadow-xl">
+                <DotLottiePlayer
+                  src="/login-anim.lottie"
+                  autoplay
+                  loop
+                />
+              </div>
+              <div className="text-center mt-6 lg:mt-8">
+                <h2 className="font-serif text-2xl sm:text-3xl font-bold text-gray-800 tracking-tight">
+                  Welcome Back
+                </h2>
+                <p className="text-sm text-gray-500 mt-2 max-w-xs mx-auto">
+                  Sign in to continue your sweet journey with Neelamrit.
+                </p>
+              </div>
+            </div>
+
+            {/* RIGHT SIDE - Login Form */}
+            <div className="flex-1 p-8 sm:p-12 lg:p-14">
+              {/* Brand header */}
+              <div className="text-center mb-10">
+                <h1 className="font-serif text-3xl sm:text-4xl font-black text-gray-900 tracking-tighter mb-1">
+                  NEELAMRIT
+                </h1>
+                <p className="text-[10px] font-black text-amber-800 uppercase tracking-[0.4em] opacity-80 leading-none">
+                  Sweets & Snacks
+                </p>
+              </div>
+
+              {/* Status messages */}
+              {successMsg && (
+                <div className="mb-6 p-4 rounded-2xl bg-emerald-50 border border-emerald-100 text-[12px] font-bold text-emerald-800 flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+                  <span className="text-lg">✓</span> {successMsg}
+                </div>
+              )}
+              {error && (
+                <div className="mb-6 p-4 rounded-2xl bg-red-50 border border-red-100 text-[12px] font-bold text-red-800 flex items-center gap-2 animate-in shake duration-300">
+                  <span className="text-lg">⚠️</span> {error}
+                </div>
+              )}
+
+              {/* Form fields */}
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-[11px] font-black text-gray-400 uppercase tracking-widest mb-2.5 ml-1">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="example@mail.com"
+                    onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                    className="w-full px-6 py-4.5 bg-gray-50 border border-gray-100 focus:border-amber-200 focus:bg-white rounded-2xl text-sm font-semibold text-gray-900 outline-none transition-all duration-300 placeholder:text-gray-300"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-2.5 ml-1">
+                    <label className="block text-[11px] font-black text-gray-400 uppercase tracking-widest leading-none">
+                      Password
+                    </label>
+                    {/* Fixed: removed invalid size-sm attribute */}
+                    <Link
+                      href="/forgot-password"
+                      className="text-[10px] font-bold text-amber-900/60 hover:text-amber-900 hover:underline transition-colors"
+                    >
+                      Reset Password?
+                    </Link>
+                  </div>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                    className="w-full px-6 py-4.5 bg-gray-50 border border-gray-100 focus:border-amber-200 focus:bg-white rounded-2xl text-sm font-semibold text-gray-900 outline-none transition-all duration-300 placeholder:text-gray-300"
+                  />
+                </div>
+
+                {/* Login button */}
+                <button
+                  onClick={handleLogin}
+                  disabled={loading}
+                  className={`w-full py-5 rounded-2xl text-[11px] font-black uppercase tracking-[0.25em] transition-all duration-500 shadow-xl active:scale-95
+                    ${loading 
+                      ? "bg-gray-100 text-gray-400 cursor-not-allowed shadow-none" 
+                      : "bg-amber-900 text-white hover:bg-black hover:shadow-amber-900/20"
+                    }`}
+                >
+                  {loading ? (
+                    <div className="flex items-center justify-center gap-3">
+                      <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                      Verifying...
+                    </div>
+                  ) : "Sign In to Account"}
+                </button>
+              </div>
+
+              {/* Signup redirect */}
+              <div className="mt-10 pt-8 border-t border-gray-50 text-center">
+                <p className="text-sm font-medium text-gray-500">
+                  New to our family?{" "}
+                  <Link href="/signup" className="text-amber-900 font-black hover:underline ml-1">
+                    Create Account
+                  </Link>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Secured by Neelamrit - styled properly */}
+        <div className="mt-10 flex flex-col items-center gap-3 opacity-60 hover:opacity-100 transition-opacity duration-300">
+          <div className="flex items-center gap-2">
+            <svg className="w-4 h-4 text-amber-800" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+            </svg>
+            <span className="text-[10px] font-black uppercase tracking-[0.4em] text-gray-700">
+              Secured by Neelamrit
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
