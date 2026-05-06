@@ -36,26 +36,35 @@ export default function SignupPage() {
 
     const pollInterval = setInterval(async () => {
       try {
-        // 🟢 THE FIX: 'no-store' ताकि ब्राउज़र हमेशा लाइव डेटाबेस चेक करे
-        const res = await fetch(`/api/truecaller/status?nonce=${requestNonce}`, {
-          cache: 'no-store'
-        });
+        const res = await fetch(`/api/truecaller/status?nonce=${requestNonce}`, { cache: 'no-store' });
         const data = await res.json();
 
         if (data.status === "success") {
           clearInterval(pollInterval);
-          setSuccessMsg("Account Verified! Logging in...");
+          setSuccessMsg("Account Verified! Logging in securely...");
           
           const { error: authErr } = await supabase.auth.signInWithPassword({
             email: `${data.phone}@neelamrit.com`,
             password: data.temp_password
           });
           
-          if (authErr) throw authErr;
+          // 🟢 THE FIX: Catching Supabase Error here
+          if (authErr) {
+            setLoading(false);
+            setIsPolling(false);
+            setSuccessMsg("");
+            setError(`Supabase Error: ${authErr.message}`);
+            return;
+          }
+
           window.location.assign("/"); 
         }
-      } catch (e) {
-        console.error(e);
+      } catch (e: any) {
+        clearInterval(pollInterval);
+        setLoading(false);
+        setIsPolling(false);
+        setSuccessMsg("");
+        setError(`System Error: ${e.message}`);
       }
     }, 2000);
 
@@ -63,7 +72,7 @@ export default function SignupPage() {
       clearInterval(pollInterval);
       if (isPolling) {
         setLoading(false); setIsPolling(false); setSuccessMsg("");
-        setError("Truecaller request timed out.");
+        setError("Truecaller request timed out. Please try again.");
       }
     }, 60000); 
   };

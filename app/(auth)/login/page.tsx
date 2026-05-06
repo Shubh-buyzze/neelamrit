@@ -34,7 +34,6 @@ export default function LoginPage() {
     setSuccessMsg("Opening Truecaller App...");
     setError("");
 
-    // Safe Nonce
     const requestNonce = Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
     const partnerKey = process.env.NEXT_PUBLIC_TRUECALLER_KEY;
 
@@ -42,26 +41,35 @@ export default function LoginPage() {
 
     const pollInterval = setInterval(async () => {
       try {
-        // 🟢 THE FIX: 'no-store' ताकि ब्राउज़र हमेशा लाइव डेटाबेस चेक करे
-        const res = await fetch(`/api/truecaller/status?nonce=${requestNonce}`, {
-          cache: 'no-store' 
-        });
+        const res = await fetch(`/api/truecaller/status?nonce=${requestNonce}`, { cache: 'no-store' });
         const data = await res.json();
 
         if (data.status === "success") {
           clearInterval(pollInterval);
-          setSuccessMsg("Verified! Logging you in...");
+          setSuccessMsg("Verified! Logging you in securely...");
           
           const { error: authErr } = await supabase.auth.signInWithPassword({
             email: `${data.phone}@neelamrit.com`,
             password: data.temp_password
           });
           
-          if (authErr) throw authErr;
+          // 🟢 THE FIX: Catching Supabase Error here
+          if (authErr) {
+            setLoading(false);
+            setIsPolling(false);
+            setSuccessMsg("");
+            setError(`Supabase Error: ${authErr.message}`);
+            return;
+          }
+
           window.location.assign("/"); 
         }
-      } catch (e) {
-        console.error(e);
+      } catch (e: any) {
+        clearInterval(pollInterval);
+        setLoading(false);
+        setIsPolling(false);
+        setSuccessMsg("");
+        setError(`System Error: ${e.message}`);
       }
     }, 2000);
 
@@ -69,7 +77,7 @@ export default function LoginPage() {
       clearInterval(pollInterval);
       if (isPolling) {
         setLoading(false); setIsPolling(false); setSuccessMsg("");
-        setError("Truecaller request timed out. Try again.");
+        setError("Truecaller request timed out. Please try again.");
       }
     }, 60000); 
   };
