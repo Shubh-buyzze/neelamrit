@@ -16,7 +16,6 @@ export async function GET(request: NextRequest) {
           getAll() {
             return cookieStore.getAll();
           },
-          // 🟢 FIX: Added explicit type for cookiesToSet
           setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
             cookiesToSet.forEach(({ name, value, options }) =>
               cookieStore.set(name, value, options)
