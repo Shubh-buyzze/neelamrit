@@ -28,23 +28,24 @@ export default function LoginPage() {
     if (params.get("registered") === "true") setSuccessMsg("Account created! Please login.");
   }, []);
 
-  // 🟢 TRUECALLER LOGIN LOGIC
   const handleTruecallerLogin = () => {
     setLoading(true);
     setIsPolling(true);
     setSuccessMsg("Opening Truecaller App...");
     setError("");
 
-    const requestNonce = Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+    // Safe Nonce
+    const requestNonce = Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
     const partnerKey = process.env.NEXT_PUBLIC_TRUECALLER_KEY;
 
-    // 1. Open App
     window.location.href = `truecallersdk://truesdk/web_verify?requestNonce=${requestNonce}&partnerKey=${partnerKey}&partnerName=Neelamrit&skipOption=faq`;
 
-    // 2. Poll Backend
     const pollInterval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/truecaller/status?nonce=${requestNonce}`);
+        // 🟢 THE FIX: 'no-store' ताकि ब्राउज़र हमेशा लाइव डेटाबेस चेक करे
+        const res = await fetch(`/api/truecaller/status?nonce=${requestNonce}`, {
+          cache: 'no-store' 
+        });
         const data = await res.json();
 
         if (data.status === "success") {
@@ -57,19 +58,18 @@ export default function LoginPage() {
           });
           
           if (authErr) throw authErr;
-          window.location.assign("/"); // 🚀 Hard Redirect to Home
+          window.location.assign("/"); 
         }
       } catch (e) {
         console.error(e);
       }
     }, 2000);
 
-    // Timeout
     setTimeout(() => {
       clearInterval(pollInterval);
       if (isPolling) {
         setLoading(false); setIsPolling(false); setSuccessMsg("");
-        setError("Truecaller request timed out.");
+        setError("Truecaller request timed out. Try again.");
       }
     }, 60000); 
   };
@@ -86,7 +86,6 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-[#fafaf9] flex items-center justify-center p-4 font-sans">
       <div className="relative w-full max-w-5xl mx-auto bg-white rounded-[2.5rem] shadow-xl overflow-hidden flex flex-col lg:flex-row border border-gray-100">
-        
         <div className="flex-1 bg-amber-50/50 p-12 flex flex-col items-center justify-center border-r">
           <DotLottiePlayer src="/login-anim.lottie" autoplay loop className="w-80 h-80" />
           <h2 className="font-serif text-3xl font-bold text-gray-800 mt-6">Welcome Back</h2>
