@@ -4,7 +4,8 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { createBrowserClient } from "@supabase/ssr"; // 🟢 Added Supabase client
+import { createBrowserClient } from "@supabase/ssr";
+import Script from "next/script"; // 🟢 Script Import Added
 
 // Dynamic import for Lottie player (SSR disabled)
 const DotLottiePlayer = dynamic(
@@ -18,8 +19,10 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+  
+  // 🟢 TC Loaded State
+  const [isTcLoaded, setIsTcLoaded] = useState(false); 
 
-  // 🟢 Supabase Client Init
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -30,8 +33,10 @@ export default function LoginPage() {
     if (params.get("registered") === "true") {
       setSuccessMsg("Account created successfully! Please login to your account.");
     }
+  }, []);
 
-    // 🟢 TRUECALLER INITIALIZATION
+  // 🟢 Initialization logic triggered AFTER script completely loads
+  const initTruecaller = () => {
     if (typeof window !== "undefined" && (window as any).Truecaller) {
       (window as any).Truecaller.init({
         partnerKey: process.env.NEXT_PUBLIC_TRUECALLER_KEY,
@@ -43,20 +48,18 @@ export default function LoginPage() {
 
           setLoading(true);
           try {
-            // Truecaller Profile Data
             const profile = response; 
             const fullName = `${profile.firstName || ""} ${profile.lastName || ""}`.trim();
             const phone = profile.phoneNumber;
 
-            // 🟢 Save to Supabase 'users_profile' Table
             const { error: dbError } = await supabase
               .from("users_profile")
               .upsert({
                 phone: phone,
                 full_name: fullName,
                 avatar_url: profile.avatarUrl || null,
-                role: "customer" // Default role assigning
-              }, { onConflict: "phone" }); // Phone match hone par update karega
+                role: "customer" 
+              }, { onConflict: "phone" });
 
             if (!dbError) {
               setSuccessMsg("Login Successful! Redirecting...");
@@ -71,10 +74,10 @@ export default function LoginPage() {
           }
         },
       });
+      setIsTcLoaded(true); // Mark as successfully initialized
     }
-  }, [supabase]);
+  };
 
-  // Regular Email/Password Login
   async function handleLogin() {
     if (!email || !password) {
       setError("Please enter both email and password");
@@ -104,19 +107,28 @@ export default function LoginPage() {
     }
   }
 
-  // Handle Truecaller Button Click
   const handleTruecallerClick = (e: React.MouseEvent) => {
     e.preventDefault();
     setError("");
-    if (typeof window !== "undefined" && (window as any).Truecaller) {
-      (window as any).Truecaller.prompt(); // Shows the popup
+    
+    // Check if loaded properly
+    if (isTcLoaded && typeof window !== "undefined" && (window as any).Truecaller) {
+      (window as any).Truecaller.prompt(); 
     } else {
-      setError("Truecaller is still loading, please wait a second...");
+      setError("Truecaller is blocked or still loading. Try disabling Ad-Blocker if enabled.");
     }
   };
 
   return (
     <div className="min-h-screen bg-[#fafaf9] flex items-center justify-center p-4 sm:p-6 lg:p-8 font-sans selection:bg-amber-200">
+      
+      {/* 🟢 NEXT.JS SCRIPT TAG WITH onLoad EVENT */}
+      <Script 
+        src="https://one-tap-sdk.truecaller.com/v1/sdk.js" 
+        strategy="afterInteractive" 
+        onLoad={initTruecaller} 
+      />
+
       {/* Background decorative blobs */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-[10%] -left-[10%] w-[45%] h-[45%] rounded-full bg-amber-100/40 blur-[120px]"></div>
