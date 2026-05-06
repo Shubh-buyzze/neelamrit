@@ -29,7 +29,7 @@ export default function SignupPage() {
     setSuccessMsg("Opening Truecaller App...");
     setError("");
 
-    const requestNonce = Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+    const requestNonce = Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
     const partnerKey = process.env.NEXT_PUBLIC_TRUECALLER_KEY;
 
     window.location.href = `truecallersdk://truesdk/web_verify?requestNonce=${requestNonce}&partnerKey=${partnerKey}&partnerName=Neelamrit&skipOption=faq`;
@@ -48,22 +48,16 @@ export default function SignupPage() {
             password: data.temp_password
           });
           
-          // 🟢 THE FIX: Catching Supabase Error here
           if (authErr) {
-            setLoading(false);
-            setIsPolling(false);
-            setSuccessMsg("");
-            setError(`Supabase Error: ${authErr.message}`);
+            setLoading(false); setIsPolling(false); setSuccessMsg("");
+            setError(`Login Error: ${authErr.message}`);
             return;
           }
-
           window.location.assign("/"); 
         }
       } catch (e: any) {
         clearInterval(pollInterval);
-        setLoading(false);
-        setIsPolling(false);
-        setSuccessMsg("");
+        setLoading(false); setIsPolling(false); setSuccessMsg("");
         setError(`System Error: ${e.message}`);
       }
     }, 2000);
@@ -77,7 +71,7 @@ export default function SignupPage() {
     }, 60000); 
   };
 
-  async function handleSignup() {
+  async function handleManualSignup() {
     if (!form.full_name || !form.phone || !form.email || !form.password) { setError("All fields required"); return; }
     if (!acceptedTerms) { setError("Accept Terms & Conditions."); return; }
     setLoading(true); setError("");
@@ -132,7 +126,7 @@ export default function SignupPage() {
               <label className="text-xs font-medium text-gray-500">I agree to the Terms & Conditions.</label>
             </div>
 
-            <button onClick={handleSignup} disabled={loading} className="w-full py-5 mt-2 rounded-2xl text-[11px] font-black uppercase tracking-widest bg-amber-900 text-white shadow-xl hover:bg-black transition-all">
+            <button onClick={handleManualSignup} disabled={loading} className="w-full py-5 mt-2 rounded-2xl text-[11px] font-black uppercase tracking-widest bg-amber-900 text-white shadow-xl hover:bg-black transition-all">
               {loading && !isPolling ? "Creating Account..." : "Create Account"}
             </button>
           </div>

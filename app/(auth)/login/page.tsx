@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { createBrowserClient } from "@supabase/ssr";
@@ -23,18 +23,13 @@ export default function LoginPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("registered") === "true") setSuccessMsg("Account created! Please login.");
-  }, []);
-
   const handleTruecallerLogin = () => {
     setLoading(true);
     setIsPolling(true);
     setSuccessMsg("Opening Truecaller App...");
     setError("");
 
-    const requestNonce = Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+    const requestNonce = Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
     const partnerKey = process.env.NEXT_PUBLIC_TRUECALLER_KEY;
 
     window.location.href = `truecallersdk://truesdk/web_verify?requestNonce=${requestNonce}&partnerKey=${partnerKey}&partnerName=Neelamrit&skipOption=faq`;
@@ -53,22 +48,16 @@ export default function LoginPage() {
             password: data.temp_password
           });
           
-          // 🟢 THE FIX: Catching Supabase Error here
           if (authErr) {
-            setLoading(false);
-            setIsPolling(false);
-            setSuccessMsg("");
-            setError(`Supabase Error: ${authErr.message}`);
+            setLoading(false); setIsPolling(false); setSuccessMsg("");
+            setError(`Login Error: ${authErr.message}`);
             return;
           }
-
           window.location.assign("/"); 
         }
       } catch (e: any) {
         clearInterval(pollInterval);
-        setLoading(false);
-        setIsPolling(false);
-        setSuccessMsg("");
+        setLoading(false); setIsPolling(false); setSuccessMsg("");
         setError(`System Error: ${e.message}`);
       }
     }, 2000);
@@ -82,7 +71,7 @@ export default function LoginPage() {
     }, 60000); 
   };
 
-  async function handleLogin() {
+  async function handleManualLogin() {
     if (!email || !password) { setError("Please enter both fields"); return; }
     setLoading(true); setError("");
 
@@ -117,9 +106,9 @@ export default function LoginPage() {
 
           <div className="space-y-6">
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email Address" className="w-full px-6 py-4.5 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-semibold text-gray-900 placeholder-gray-400 outline-none focus:border-amber-400 focus:bg-white" />
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" onKeyDown={(e) => e.key === "Enter" && handleLogin()} className="w-full px-6 py-4.5 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-semibold text-gray-900 placeholder-gray-400 outline-none focus:border-amber-400 focus:bg-white" />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" onKeyDown={(e) => e.key === "Enter" && handleManualLogin()} className="w-full px-6 py-4.5 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-semibold text-gray-900 placeholder-gray-400 outline-none focus:border-amber-400 focus:bg-white" />
 
-            <button onClick={handleLogin} disabled={loading} className="w-full py-5 rounded-2xl text-[11px] font-black uppercase tracking-widest bg-amber-900 text-white shadow-xl hover:bg-black transition-all">
+            <button onClick={handleManualLogin} disabled={loading} className="w-full py-5 rounded-2xl text-[11px] font-black uppercase tracking-widest bg-amber-900 text-white shadow-xl hover:bg-black transition-all">
               {loading && !isPolling ? "Verifying..." : "Sign In"}
             </button>
           </div>
