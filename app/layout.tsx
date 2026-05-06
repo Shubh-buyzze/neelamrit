@@ -1,6 +1,7 @@
 // app/layout.tsx
 import type { Metadata } from "next";
 import { Inter, Playfair_Display } from "next/font/google";
+import Script from "next/script"; // 🟢 ADDED FOR TRUECALLER
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -20,6 +21,12 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} ${playfair.variable}`}>
       <body className="bg-[#fafaf9] font-sans antialiased">
         {children}
+        
+        {/* 🟢 TRUECALLER SDK SCRIPT */}
+        <Script 
+          src="https://one-tap-sdk.truecaller.com/v1/sdk.js" 
+          strategy="afterInteractive" 
+        />
       </body>
     </html>
   );
