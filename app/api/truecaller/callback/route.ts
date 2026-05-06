@@ -1,22 +1,25 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+// Admin Client: RLS बायपास करने के लिए Service Role Key का इस्तेमाल
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY! 
 );
 
+// यह फंक्शन GET और POST दोनों तरह की रिक्वेस्ट को हैंडल करेगा
 async function handleTruecallerRequest(req: Request) {
   try {
     const url = new URL(req.url);
     let accessToken = "";
     let requestNonce = "";
 
-    // 1. Get request Data
+    // 🟢 1. Extract Data (GET या POST दोनों के लिए सपोर्ट)
     if (req.method === "GET") {
       accessToken = url.searchParams.get("accessToken") || url.searchParams.get("token") || "";
       requestNonce = url.searchParams.get("requestNonce") || url.searchParams.get("requestId") || "";
-    } else if (req.method === "POST") {
+    } 
+    else if (req.method === "POST") {
       const textBody = await req.text();
       try {
         const payload = JSON.parse(textBody);
@@ -29,39 +32,39 @@ async function handleTruecallerRequest(req: Request) {
       }
     }
 
+    // अगर टोकन नहीं मिला तो एरर के साथ लॉगिन पेज पर वापस भेजें
     if (!accessToken || !requestNonce) {
-      return NextResponse.redirect(new URL('/login?error=Invalid_Truecaller_Payload', req.url));
+      return NextResponse.redirect(new URL('/login?error=payload_missing', req.url));
     }
 
-    // 2. Fetch Profile from Truecaller
+    // 🟢 2. Fetch Profile from Truecaller
     const tcRes = await fetch("https://profile4.truecaller.com/v1/default", {
       headers: { Authorization: `Bearer ${accessToken}` }
     });
     
     if (!tcRes.ok) {
-       return NextResponse.redirect(new URL('/login?error=Truecaller_Token_Expired', req.url));
+       return NextResponse.redirect(new URL('/login?error=truecaller_token_expired', req.url));
     }
     
     const profile = await tcRes.json();
 
-    // 🟢 THE FIX IS HERE 🟢
-    // Phone number को String में बदलकर ही replace लगाएँ, ताकि सर्वर क्रैश न हो।
+    // 🟢 3. Safe Phone Parsing (ताकि replace() से सर्वर क्रैश न हो)
     const rawPhone = profile.phoneNumbers?.[0] || profile.phoneNumber || "";
     const phone = String(rawPhone).replace("+91", "").trim(); 
-    
     const fullName = `${profile.firstName || ""} ${profile.lastName || ""}`.trim();
 
-    // 3. Ghost Email & Temp Password
+    // 🟢 4. Setup Ghost Account Credentials
     const ghostEmail = `${phone}@neelamrit.com`;
-    const tempPassword = Math.random().toString(36).slice(-8) + "Aa1@";
+    const tempPassword = Math.random().toString(36).slice(-10) + "Aa1!";
 
-    // 4. Create or Update User in Supabase
+    // 🟢 5. Create or Update User in Supabase Auth
     const { error: authError } = await supabaseAdmin.auth.admin.createUser({
       email: ghostEmail,
       password: tempPassword,
       email_confirm: true,
     });
 
+    // अगर यूज़र पहले से है, तो बस उसका पासवर्ड अपडेट करें
     if (authError && authError.message.includes("already exists")) {
       const { data: usersData } = await supabaseAdmin.auth.admin.listUsers();
       const existingUser = usersData.users.find(u => u.email === ghostEmail);
@@ -70,29 +73,32 @@ async function handleTruecallerRequest(req: Request) {
       }
     }
 
-    // 5. Update Database Tables
+    // 🟢 6. Update Database Tables
+    // Profile टेबल अपडेट करें
     await supabaseAdmin.from("users_profile").upsert({
-      phone: phone, full_name: fullName, role: "customer"
+      phone: phone, 
+      full_name: fullName, 
+      role: "customer"
     }, { onConflict: "phone" });
 
+    // Auth Requests टेबल में स्टेटस 'success' करें
     await supabaseAdmin.from("tc_auth_requests").upsert({
-      nonce: requestNonce, phone: phone, temp_password: tempPassword, status: "success"
+      nonce: requestNonce, 
+      phone: phone, 
+      temp_password: tempPassword, 
+      status: "success"
     });
 
-    // 6. Redirect to Success Page
-    return NextResponse.redirect(new URL(`/truecaller-success?nonce=${requestNonce}`, req.url));
+    // 🟢 7. Redirect to Success Page (यहाँ से फ्रंटएंड टेकओवर करेगा)
+    const redirectUrl = new URL(`/truecaller-success?nonce=${requestNonce}`, req.url);
+    return NextResponse.redirect(redirectUrl);
 
   } catch (err: any) {
     console.error("Truecaller Webhook Error:", err);
-    // कोई भी एरर आये तो लॉगिन पेज पर एरर मैसेज के साथ भेज दें
-    return NextResponse.redirect(new URL(`/login?error=Server_Error`, req.url));
+    return NextResponse.redirect(new URL('/login?error=server_error', req.url));
   }
 }
 
-export async function GET(req: Request) {
-  return handleTruecallerRequest(req);
-}
-
-export async function POST(req: Request) {
-  return handleTruecallerRequest(req);
-}
+// Next.js को बताएँ कि यह API GET और POST दोनों मेथड एक्सेप्ट करेगी
+export async function GET(req: Request) { return handleTruecallerRequest(req); }
+export async function POST(req: Request) { return handleTruecallerRequest(req); }
