@@ -1,34 +1,41 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// Admin Client (Bypasses RLS to create users)
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY! 
 );
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { requestNonce, accessToken } = body;
-
-    if (!requestNonce || !accessToken) {
-      return NextResponse.json({ success: false, error: "Invalid Payload" }, { status: 400 });
+    // Truecaller का डेटा (POST) रीड करें
+    const textBody = await req.text();
+    let payload;
+    try {
+      payload = JSON.parse(textBody);
+    } catch {
+      const params = new URLSearchParams(textBody);
+      payload = Object.fromEntries(params);
     }
 
-    // 1. Fetch Profile from Truecaller using Access Token
+    const accessToken = payload.accessToken || payload.token;
+    const requestNonce = payload.requestNonce || payload.requestId;
+
+    if (!accessToken || !requestNonce) {
+      return NextResponse.redirect(new URL('/login?error=Invalid_Payload', req.url), 302);
+    }
+
+    // 1. Fetch Profile from Truecaller
     const tcRes = await fetch("https://profile4.truecaller.com/v1/default", {
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: { Authorization: `Bearer ${accessToken}` }
     });
     const profile = await tcRes.json();
 
-    // Extract Phone (Truecaller returns phone array or string with country code)
     let phone = profile.phoneNumbers?.[0] || profile.phoneNumber || "";
-    phone = phone.replace("+91", "").trim(); // Remove +91 for standard format
-
+    phone = phone.replace("+91", "").trim();
     const fullName = `${profile.firstName || ""} ${profile.lastName || ""}`.trim();
 
-    // 2. Ghost Email Trick for Supabase Login
+    // 2. Ghost Email & Temp Password
     const ghostEmail = `${phone}@neelamrit.com`;
     const tempPassword = Math.random().toString(36).slice(-8) + "Aa1@";
 
@@ -40,44 +47,28 @@ export async function POST(req: Request) {
     });
 
     if (authError && authError.message.includes("already exists")) {
-      // ✅ FIX: listUsers pagination — page 1 se exact user dhundo by email filter
-      const { data: usersData } = await supabaseAdmin.auth.admin.listUsers({
-        page: 1,
-        perPage: 1000,
-      });
-      const existingUser = usersData?.users.find((u) => u.email === ghostEmail);
+      const { data: usersData } = await supabaseAdmin.auth.admin.listUsers();
+      const existingUser = usersData.users.find(u => u.email === ghostEmail);
       if (existingUser) {
-        await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
-          password: tempPassword,
-        });
+         await supabaseAdmin.auth.admin.updateUserById(existingUser.id, { password: tempPassword });
       }
     }
 
-    // 4. Update Profile Table
-    await supabaseAdmin.from("users_profile").upsert(
-      {
-        phone: phone,
-        full_name: fullName,
-        role: "customer",
-      },
-      { onConflict: "phone" }
-    );
+    // 4. Update Database Tables
+    await supabaseAdmin.from("users_profile").upsert({
+      phone: phone, full_name: fullName, role: "customer"
+    }, { onConflict: "phone" });
 
-    // 5. Save Status & Credentials in Polling Table
-    // ✅ FIX: upsert with update on conflict — agar same nonce dobara aaye
-    await supabaseAdmin.from("tc_auth_requests").upsert(
-      {
-        nonce: requestNonce,
-        phone: phone,
-        temp_password: tempPassword,
-        status: "success",
-      },
-      { onConflict: "nonce" }
-    );
+    await supabaseAdmin.from("tc_auth_requests").upsert({
+      nonce: requestNonce, phone: phone, temp_password: tempPassword, status: "success"
+    });
 
-    return NextResponse.json({ success: true });
+    // 🟢 THE FIX: ब्राउज़र को सक्सेस पेज पर Redirect करें
+    const redirectUrl = new URL(`/truecaller-success?nonce=${requestNonce}`, req.url);
+    return NextResponse.redirect(redirectUrl, 302);
+
   } catch (err: any) {
     console.error("Truecaller Webhook Error:", err);
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    return NextResponse.redirect(new URL('/login?error=Truecaller_Failed', req.url), 302);
   }
 }
