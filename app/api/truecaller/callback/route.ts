@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+export const dynamic = 'force-dynamic';
+
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY! 
@@ -9,51 +11,42 @@ const supabaseAdmin = createClient(
 export async function POST(req: Request) {
   try {
     const textBody = await req.text();
-    let accessToken = "";
-    let requestNonce = "";
+    const params = new URLSearchParams(textBody);
+    const accessToken = params.get("accessToken") || params.get("token") || "";
+    const requestNonce = params.get("requestNonce") || params.get("requestId") || "";
 
-    // 🟢 Extract Data safely (GET or POST)
-    try {
-      const payload = JSON.parse(textBody);
-      accessToken = payload.accessToken || payload.token;
-      requestNonce = payload.requestNonce || payload.requestId;
-    } catch {
-      const params = new URLSearchParams(textBody);
-      accessToken = params.get("accessToken") || params.get("token") || "";
-      requestNonce = params.get("requestNonce") || params.get("requestId") || "";
-    }
+    if (!accessToken || !requestNonce) return NextResponse.json({ success: false });
 
-    if (!accessToken || !requestNonce) {
-      return NextResponse.json({ success: false, error: "Missing payload" });
-    }
-
-    // 🟢 Fetch Profile
     const tcRes = await fetch("https://profile4.truecaller.com/v1/default", {
       headers: { Authorization: `Bearer ${accessToken}` }
     });
     const profile = await tcRes.json();
 
-    // 🟢 Safe Phone Parsing
     const rawPhone = profile.phoneNumbers?.[0] || profile.phoneNumber || "";
     const phone = String(rawPhone).replace("+91", "").trim(); 
     const fullName = `${profile.firstName || ""} ${profile.lastName || ""}`.trim();
 
-    // 🟢 Ghost Account
     const ghostEmail = `${phone}@neelamrit.com`;
-    const tempPassword = Math.random().toString(36).slice(-10) + "Aa1!";
+    // 🟢 नया पासवर्ड फॉर्मेट
+    const tempPassword = "Tc_" + Math.random().toString(36).slice(-10) + "Z9!";
 
-    // 🟢 Create User in Auth
-    const { error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email: ghostEmail, password: tempPassword, email_confirm: true,
-    });
+    // 🟢 THE FIX: एरर मैसेज पर निर्भर रहने के बजाय सीधा यूज़र ढूँढें
+    const { data: userList } = await supabaseAdmin.auth.admin.listUsers();
+    const existingUser = userList.users.find(u => u.email === ghostEmail);
 
-    if (authError && authError.message.includes("already exists")) {
-      const { data: list } = await supabaseAdmin.auth.admin.listUsers();
-      const user = list.users.find(u => u.email === ghostEmail);
-      if (user) await supabaseAdmin.auth.admin.updateUserById(user.id, { password: tempPassword });
+    if (existingUser) {
+      // 🟢 अगर यूज़र है, तो हर हाल में पासवर्ड अपडेट करो!
+      await supabaseAdmin.auth.admin.updateUserById(existingUser.id, { password: tempPassword });
+    } else {
+      // 🟢 अगर नहीं है, तो नया बनाओ
+      await supabaseAdmin.auth.admin.createUser({
+        email: ghostEmail,
+        password: tempPassword,
+        email_confirm: true,
+      });
     }
 
-    // 🟢 Save to Database
+    // Database अपडेट्स
     await supabaseAdmin.from("users_profile").upsert({
       phone, full_name: fullName, role: "customer"
     }, { onConflict: "phone" });
@@ -62,24 +55,11 @@ export async function POST(req: Request) {
       nonce: requestNonce, phone, temp_password: tempPassword, status: "success"
     });
 
-    // 🟢 Background response (No redirect needed here)
     return NextResponse.json({ success: true });
-
   } catch (err: any) {
-    console.error("Webhook Error:", err);
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    console.error("Webhook Error:", err.message);
+    return NextResponse.json({ success: false, error: err.message });
   }
 }
 
-export async function GET(req: Request) {
-  const url = new URL(req.url);
-  const accessToken = url.searchParams.get("accessToken") || url.searchParams.get("token") || "";
-  const requestNonce = url.searchParams.get("requestNonce") || url.searchParams.get("requestId") || "";
-  
-  // Create a fake request to pass to POST logic
-  const mockReq = new Request(req.url, {
-    method: 'POST',
-    body: JSON.stringify({ accessToken, requestNonce })
-  });
-  return POST(mockReq);
-}
+export async function GET(req: Request) { return POST(req); }
