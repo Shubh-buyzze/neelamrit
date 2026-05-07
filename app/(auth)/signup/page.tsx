@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { createBrowserClient } from "@supabase/ssr";
@@ -13,45 +13,45 @@ const DotLottiePlayer = dynamic(
 export default function SignupPage() {
   const [form, setForm] = useState({ full_name: "", phone: "", email: "", password: "" });
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [loading, setLoading]     = useState(false);
-  const [error, setError]         = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   const [isPolling, setIsPolling] = useState(false);
-
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  const stopPolling = () => {
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-  };
-
+  // ---------- Truecaller Signup (with fixed polling) ----------
   const handleTruecallerAuth = () => {
     setLoading(true);
     setIsPolling(true);
     setSuccessMsg("Opening Truecaller App...");
     setError("");
 
-    const requestNonce =
-      Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
+    const requestNonce = Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
     const partnerKey = process.env.NEXT_PUBLIC_TRUECALLER_KEY;
 
+    // Redirect to Truecaller deep link
     window.location.href = `truecallersdk://truesdk/web_verify?requestNonce=${requestNonce}&partnerKey=${partnerKey}&partnerName=Neelamrit&skipOption=faq`;
 
-    // FIX (Problem 4 — fetch side): cache: 'no-store' on every poll request
-    pollRef.current = setInterval(async () => {
+    let pollCount = 0;
+    const maxPolls = 30; // 60 seconds timeout
+
+    const pollInterval = setInterval(async () => {
+      pollCount++;
       try {
+        // 🔥 IMPORTANT: disable Next.js cache
         const res = await fetch(`/api/truecaller/status?nonce=${requestNonce}`, {
           cache: "no-store",
         });
         const data = await res.json();
 
         if (data.status === "success") {
-          stopPolling();
-          setSuccessMsg("Account Verified! Logging in securely...");
+          clearInterval(pollInterval);
+          setIsPolling(false);
+          setSuccessMsg("Account Verified! Logging you in securely...");
 
           const { error: authErr } = await supabase.auth.signInWithPassword({
             email: `${data.phone}@neelamrit.com`,
@@ -59,32 +59,44 @@ export default function SignupPage() {
           });
 
           if (authErr) {
-            setLoading(false); setIsPolling(false); setSuccessMsg("");
+            setLoading(false);
+            setSuccessMsg("");
             setError(`Login Error: ${authErr.message}`);
             return;
           }
           window.location.assign("/");
+        } else if (pollCount >= maxPolls) {
+          clearInterval(pollInterval);
+          setLoading(false);
+          setIsPolling(false);
+          setSuccessMsg("");
+          setError("Truecaller request timed out. Please try again.");
         }
       } catch (e: any) {
-        stopPolling();
-        setLoading(false); setIsPolling(false); setSuccessMsg("");
-        setError(`System Error: ${e.message}`);
+        console.error("Polling error:", e);
+        if (pollCount >= maxPolls) {
+          clearInterval(pollInterval);
+          setLoading(false);
+          setIsPolling(false);
+          setSuccessMsg("");
+          setError(`System Error: ${e.message}`);
+        }
       }
     }, 2000);
-
-    setTimeout(() => {
-      stopPolling();
-      setLoading(false); setIsPolling(false); setSuccessMsg("");
-      setError("Truecaller request timed out. Please try again.");
-    }, 60_000);
   };
 
+  // ---------- Manual Signup ----------
   async function handleManualSignup() {
     if (!form.full_name || !form.phone || !form.email || !form.password) {
-      setError("All fields required"); return;
+      setError("All fields required");
+      return;
     }
-    if (!acceptedTerms) { setError("Accept Terms & Conditions."); return; }
-    setLoading(true); setError("");
+    if (!acceptedTerms) {
+      setError("Accept Terms & Conditions.");
+      return;
+    }
+    setLoading(true);
+    setError("");
 
     try {
       const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -95,26 +107,32 @@ export default function SignupPage() {
 
       if (authData.user) {
         await supabase.from("users_profile").upsert(
-          { id: authData.user.id, full_name: form.full_name, phone: form.phone, role: "customer" },
-          { onConflict: "id" }   // conflict on PK so DB trigger row is updated
+          {
+            id: authData.user.id,
+            full_name: form.full_name,
+            phone: form.phone,
+            role: "customer",
+          },
+          { onConflict: "phone" }
         );
       }
       window.location.assign("/login?registered=true");
     } catch (err: any) {
-      setError(err.message); setLoading(false);
+      setError(err.message);
+      setLoading(false);
     }
   }
 
   return (
     <div className="min-h-screen bg-[#fafaf9] flex items-center justify-center p-4 font-sans">
       <div className="relative w-full max-w-5xl mx-auto bg-white rounded-[2.5rem] shadow-xl flex flex-col lg:flex-row overflow-hidden border border-gray-100">
-        {/* Left panel */}
+        {/* Left side – animation */}
         <div className="flex-1 bg-amber-50/50 p-12 flex flex-col items-center justify-center border-r">
           <DotLottiePlayer src="/login-anim.lottie" autoplay loop className="w-80 h-80" />
           <h2 className="font-serif text-3xl font-bold text-gray-800 mt-6">Join the Family</h2>
         </div>
 
-        {/* Right panel */}
+        {/* Right side – signup form */}
         <div className="flex-1 p-8 lg:p-14">
           <div className="text-center mb-8">
             <h1 className="font-serif text-4xl font-black text-gray-900 tracking-tighter">NEELAMRIT</h1>
@@ -131,22 +149,22 @@ export default function SignupPage() {
             </div>
           )}
 
-          {/* Truecaller button — mobile only */}
+          {/* Truecaller button – visible only on mobile (md:hidden) */}
           <button
             onClick={handleTruecallerAuth}
             disabled={loading}
-            className="w-full md:hidden mb-6 bg-[#0087FF] text-white py-4 rounded-2xl text-[13px] font-black tracking-wide shadow-lg active:scale-95 transition-all disabled:opacity-60"
+            className="w-full md:hidden mb-6 bg-[#0087FF] text-white py-4 rounded-2xl text-[13px] font-black tracking-wide shadow-lg active:scale-95 transition-all"
           >
             {loading && isPolling ? "WAITING FOR APPROVAL..." : "1-CLICK SIGNUP WITH TRUECALLER"}
           </button>
 
           <div className="md:hidden flex items-center gap-4 mb-6 opacity-30">
-            <div className="flex-1 h-px bg-gray-400" />
+            <div className="flex-1 h-px bg-gray-400"></div>
             <span className="text-[10px] font-black uppercase text-gray-600">OR MANUAL</span>
-            <div className="flex-1 h-px bg-gray-400" />
+            <div className="flex-1 h-px bg-gray-400"></div>
           </div>
 
-          {/* Manual signup */}
+          {/* Manual signup fields */}
           <div className="space-y-4">
             <input
               type="text"
@@ -185,14 +203,14 @@ export default function SignupPage() {
                 className="w-4 h-4 mt-1"
               />
               <label className="text-xs font-medium text-gray-500">
-                I agree to the Terms &amp; Conditions.
+                I agree to the Terms & Conditions.
               </label>
             </div>
 
             <button
               onClick={handleManualSignup}
               disabled={loading}
-              className="w-full py-5 mt-2 rounded-2xl text-[11px] font-black uppercase tracking-widest bg-amber-900 text-white shadow-xl hover:bg-black transition-all disabled:opacity-60"
+              className="w-full py-5 mt-2 rounded-2xl text-[11px] font-black uppercase tracking-widest bg-amber-900 text-white shadow-xl hover:bg-black transition-all"
             >
               {loading && !isPolling ? "Creating Account..." : "Create Account"}
             </button>

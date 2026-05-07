@@ -8,38 +8,28 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// ─── Core handler (shared by GET and POST) ───────────────────────────────────
-async function handleTruecallerWebhook(accessToken: string, requestNonce: string) {
-  if (!accessToken || !requestNonce) {
-    return NextResponse.json({ success: false, error: "Missing tokens" }, { status: 400 });
-  }
-
-  // ── Validate token with Truecaller ──────────────────────────────────────────
+async function handleTruecallerCallback(
+  accessToken: string,
+  requestNonce: string
+) {
+  // 1. Fetch profile from Truecaller
   const tcRes = await fetch("https://profile4.truecaller.com/v1/default", {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-
   if (!tcRes.ok) {
-    return NextResponse.json(
-      { success: false, error: "Truecaller Token Expired or Invalid" },
-      { status: 401 }
-    );
+    throw new Error("Truecaller token expired or invalid");
   }
-
   const profile = await tcRes.json();
 
   const rawPhone = profile.phoneNumbers?.[0] || profile.phoneNumber || "";
   const phone = String(rawPhone).replace("+91", "").trim();
   const fullName = `${profile.firstName || ""} ${profile.lastName || ""}`.trim();
   const ghostEmail = `${phone}@neelamrit.com`;
-
-  // Generate a fresh temp password on EVERY request (fixes Problem 3 — password sync)
   const tempPassword = "Tc_" + Math.random().toString(36).slice(-10) + "Z9!";
 
-  let userId = "";
+  let userId: string;
 
-  // ── STEP 1: Check if a profile already exists (by phone) ───────────────────
-  // FIX (Problem 2): We fetch the `id` here so the upsert always has the PK.
+  // 2. Check if user already exists by phone in users_profile
   const { data: existingProfile } = await supabaseAdmin
     .from("users_profile")
     .select("id")
@@ -47,92 +37,112 @@ async function handleTruecallerWebhook(accessToken: string, requestNonce: string
     .maybeSingle();
 
   if (existingProfile?.id) {
+    // User exists → update password in Auth
     userId = existingProfile.id;
-
-    // FIX (Problem 3): Always update the password for existing users so the
-    // new tempPassword written to tc_auth_requests matches what Supabase Auth holds.
-    const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-      password: tempPassword,
-    });
-    if (updateErr) throw updateErr;
-
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+      userId,
+      { password: tempPassword }
+    );
+    if (updateError) throw updateError;
   } else {
-    // ── STEP 2: No profile → create a new Auth user ──────────────────────────
-    const { data: newAuthData, error: createError } = await supabaseAdmin.auth.admin.createUser({
-      email: ghostEmail,
-      password: tempPassword,
-      email_confirm: true,
-    });
-
+    // 3. User does not exist → create new Auth user
+    const { data: newUser, error: createError } =
+      await supabaseAdmin.auth.admin.createUser({
+        email: ghostEmail,
+        password: tempPassword,
+        email_confirm: true,
+      });
     if (createError) {
-      // Fallback: user may exist in Auth but profile row was never created.
-      // List users and find by email.
+      // Fallback: maybe the user exists in Auth but not in users_profile
       const { data: userList } = await supabaseAdmin.auth.admin.listUsers();
-      const fallbackUser = userList?.users.find((u) => u.email === ghostEmail);
-
+      const fallbackUser = userList.users.find((u) => u.email === ghostEmail);
       if (fallbackUser) {
         userId = fallbackUser.id;
-        // Still update the password so it stays in sync (Problem 3 fallback)
-        await supabaseAdmin.auth.admin.updateUserById(userId, { password: tempPassword });
+        await supabaseAdmin.auth.admin.updateUserById(userId, {
+          password: tempPassword,
+        });
       } else {
         throw createError;
       }
     } else {
-      userId = newAuthData.user.id;
-      // NOTE: A DB trigger may have already inserted a row in users_profile with
-      // just this `id`. The upsert below will UPDATE that row (not insert a
-      // duplicate), because we supply the same `id` as the primary key.
-      // (This is the fix for Problem 2.)
+      userId = newUser.user.id;
     }
   }
 
-  // ── STEP 3: Upsert profile — always include `id` (fixes Problem 2) ─────────
-  const { error: profileError } = await supabaseAdmin.from("users_profile").upsert(
-    { id: userId, phone, full_name: fullName, role: "customer" },
-    { onConflict: "id" }           // ← conflict on PK, not on phone
-  );
+  // 4. Upsert users_profile – always include the primary key `id`
+  const { error: profileError } = await supabaseAdmin
+    .from("users_profile")
+    .upsert({
+      id: userId,
+      phone: phone,
+      full_name: fullName,
+      role: "customer",
+    });
   if (profileError) throw profileError;
 
-  // ── STEP 4: Write auth-request record for frontend polling ──────────────────
-  const { error: stError } = await supabaseAdmin.from("tc_auth_requests").upsert(
-    { nonce: requestNonce, phone, temp_password: tempPassword, status: "success" },
-    { onConflict: "nonce" }
-  );
-  if (stError) throw stError;
+  // 5. Store / update the status for the frontend polling
+  const { error: statusError } = await supabaseAdmin
+    .from("tc_auth_requests")
+    .upsert({
+      nonce: requestNonce,
+      phone: phone,
+      temp_password: tempPassword,
+      status: "success",
+    });
+  if (statusError) throw statusError;
 
-  return NextResponse.json({ success: true });
+  return { success: true };
 }
 
-// ─── POST handler — reads tokens from the request body ───────────────────────
-export async function POST(req: Request) {
+// ------------------------------------------------------------
+// GET  – tokens arrive as query parameters
+// POST – tokens arrive as application/x-www-form-urlencoded
+// ------------------------------------------------------------
+export async function GET(req: Request) {
   try {
-    const textBody = await req.text();
-    const params = new URLSearchParams(textBody);
+    const url = new URL(req.url);
+    const accessToken = url.searchParams.get("accessToken") || url.searchParams.get("token");
+    const requestNonce = url.searchParams.get("requestNonce") || url.searchParams.get("requestId");
 
-    const accessToken  = params.get("accessToken")  || params.get("token")     || "";
-    const requestNonce = params.get("requestNonce") || params.get("requestId") || "";
+    if (!accessToken || !requestNonce) {
+      return NextResponse.json(
+        { success: false, error: "Missing accessToken or requestNonce in query" },
+        { status: 400 }
+      );
+    }
 
-    return await handleTruecallerWebhook(accessToken, requestNonce);
+    await handleTruecallerCallback(accessToken, requestNonce);
+    // Redirect the user back to your app after successful processing
+    return NextResponse.redirect(new URL("/login?truecaller=success", req.url));
   } catch (err: any) {
-    console.error("Webhook POST Error:", err.message);
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    console.error("Truecaller GET callback error:", err.message);
+    return NextResponse.redirect(
+      new URL(`/login?error=${encodeURIComponent(err.message)}`, req.url)
+    );
   }
 }
 
-// ─── GET handler — FIX (Problem 1): reads tokens from QUERY PARAMS ───────────
-// Truecaller sometimes redirects to the webhook via a GET request with tokens
-// in the URL (?accessToken=...&requestNonce=...).  The old code called
-// `POST(req)` which tried to `await req.text()` on a body-less GET and got
-// an empty string, so accessToken/requestNonce were always "".
-export async function GET(req: Request) {
+export async function POST(req: Request) {
   try {
-    const url    = new URL(req.url);
-    const accessToken  = url.searchParams.get("accessToken")  || url.searchParams.get("token")     || "";
-    const requestNonce = url.searchParams.get("requestNonce") || url.searchParams.get("requestId") || "";
+    const bodyText = await req.text();
+    const params = new URLSearchParams(bodyText);
+    const accessToken = params.get("accessToken") || params.get("token");
+    const requestNonce = params.get("requestNonce") || params.get("requestId");
 
-    return await handleTruecallerWebhook(accessToken, requestNonce);
+    if (!accessToken || !requestNonce) {
+      return NextResponse.json(
+        { success: false, error: "Missing accessToken or requestNonce in body" },
+        { status: 400 }
+      );
+    }
+
+    await handleTruecallerCallback(accessToken, requestNonce);
+    return NextResponse.json({ success: true });
   } catch (err: any) {
-    console.error("Webhook GET Error:", err.message);
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    console.error("Truecaller POST callback error:", err.message);
+    return NextResponse.json(
+      { success: false, error: err.message },
+      { status: 500 }
+    );
   }
 }
