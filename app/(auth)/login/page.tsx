@@ -109,7 +109,7 @@ export default function LoginPage() {
     pollTimerRef.current = setInterval(async () => {
       try {
         // CRITICAL: cache: "no-store" — prevent browser from caching "pending"
-        const res = await fetch(`/api/auth/truecaller/status?nonce=${nonce}&_=${Date.now()}`, {
+        const res = await fetch(`/api/truecaller/status?nonce=${nonce}&_=${Date.now()}`, {
           cache: "no-store",
           headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
         });
