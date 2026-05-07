@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { createBrowserClient } from "@supabase/ssr";
@@ -11,17 +11,25 @@ const DotLottiePlayer = dynamic(
 );
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [email, setEmail]         = useState("");
+  const [password, setPassword]   = useState("");
+  const [loading, setLoading]     = useState(false);
+  const [error, setError]         = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   const [isPolling, setIsPolling] = useState(false);
+
+  // Use a ref to track the interval so it can be cleared safely from the
+  // timeout callback without stale-closure issues.
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
+
+  const stopPolling = () => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  };
 
   const handleTruecallerLogin = () => {
     setLoading(true);
@@ -29,46 +37,50 @@ export default function LoginPage() {
     setSuccessMsg("Opening Truecaller App...");
     setError("");
 
-    const requestNonce = Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
+    const requestNonce =
+      Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
     const partnerKey = process.env.NEXT_PUBLIC_TRUECALLER_KEY;
 
     window.location.href = `truecallersdk://truesdk/web_verify?requestNonce=${requestNonce}&partnerKey=${partnerKey}&partnerName=Neelamrit&skipOption=faq`;
 
-    const pollInterval = setInterval(async () => {
+    // FIX (Problem 4 — fetch side): always pass `cache: 'no-store'` so the
+    // browser never serves a cached "pending" response.
+    pollRef.current = setInterval(async () => {
       try {
-        const res = await fetch(`/api/truecaller/status?nonce=${requestNonce}`, { cache: 'no-store' });
+        const res = await fetch(`/api/truecaller/status?nonce=${requestNonce}`, {
+          cache: "no-store",          // ← critical: skip browser cache
+        });
         const data = await res.json();
 
         if (data.status === "success") {
-          clearInterval(pollInterval);
+          stopPolling();
           setSuccessMsg("Verified! Logging you in securely...");
-          
+
           const { error: authErr } = await supabase.auth.signInWithPassword({
             email: `${data.phone}@neelamrit.com`,
-            password: data.temp_password
+            password: data.temp_password,
           });
-          
+
           if (authErr) {
             setLoading(false); setIsPolling(false); setSuccessMsg("");
             setError(`Login Error: ${authErr.message}`);
             return;
           }
-          window.location.assign("/"); 
+          window.location.assign("/");
         }
       } catch (e: any) {
-        clearInterval(pollInterval);
+        stopPolling();
         setLoading(false); setIsPolling(false); setSuccessMsg("");
         setError(`System Error: ${e.message}`);
       }
     }, 2000);
 
+    // Auto-cancel after 60 s
     setTimeout(() => {
-      clearInterval(pollInterval);
-      if (isPolling) {
-        setLoading(false); setIsPolling(false); setSuccessMsg("");
-        setError("Truecaller request timed out. Please try again.");
-      }
-    }, 60000); 
+      stopPolling();
+      setLoading(false); setIsPolling(false); setSuccessMsg("");
+      setError("Truecaller request timed out. Please try again.");
+    }, 60_000);
   };
 
   async function handleManualLogin() {
@@ -83,38 +95,75 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-[#fafaf9] flex items-center justify-center p-4 font-sans">
       <div className="relative w-full max-w-5xl mx-auto bg-white rounded-[2.5rem] shadow-xl overflow-hidden flex flex-col lg:flex-row border border-gray-100">
+        {/* Left panel */}
         <div className="flex-1 bg-amber-50/50 p-12 flex flex-col items-center justify-center border-r">
           <DotLottiePlayer src="/login-anim.lottie" autoplay loop className="w-80 h-80" />
           <h2 className="font-serif text-3xl font-bold text-gray-800 mt-6">Welcome Back</h2>
         </div>
 
+        {/* Right panel */}
         <div className="flex-1 p-8 lg:p-14">
           <div className="text-center mb-10">
             <h1 className="font-serif text-4xl font-black text-gray-900 tracking-tighter">NEELAMRIT</h1>
           </div>
 
-          {successMsg && <div className="mb-6 p-4 rounded-2xl bg-emerald-50 text-emerald-800 text-xs font-bold">✓ {successMsg}</div>}
-          {error && <div className="mb-6 p-4 rounded-2xl bg-red-50 text-red-800 text-xs font-bold">⚠️ {error}</div>}
+          {successMsg && (
+            <div className="mb-6 p-4 rounded-2xl bg-emerald-50 text-emerald-800 text-xs font-bold">
+              ✓ {successMsg}
+            </div>
+          )}
+          {error && (
+            <div className="mb-6 p-4 rounded-2xl bg-red-50 text-red-800 text-xs font-bold">
+              ⚠️ {error}
+            </div>
+          )}
 
-          <button onClick={handleTruecallerLogin} disabled={loading} className="w-full md:hidden mb-6 bg-[#0087FF] text-white py-4 rounded-2xl text-[13px] font-black tracking-wide shadow-lg active:scale-95 transition-all">
+          {/* Truecaller button — mobile only */}
+          <button
+            onClick={handleTruecallerLogin}
+            disabled={loading}
+            className="w-full md:hidden mb-6 bg-[#0087FF] text-white py-4 rounded-2xl text-[13px] font-black tracking-wide shadow-lg active:scale-95 transition-all disabled:opacity-60"
+          >
             {loading && isPolling ? "WAITING FOR APPROVAL..." : "1-CLICK LOGIN WITH TRUECALLER"}
           </button>
 
           <div className="md:hidden flex items-center gap-4 mb-6 opacity-30">
-            <div className="flex-1 h-px bg-gray-400"></div><span className="text-[10px] font-black uppercase text-gray-500">OR EMAIL</span><div className="flex-1 h-px bg-gray-400"></div>
+            <div className="flex-1 h-px bg-gray-400" />
+            <span className="text-[10px] font-black uppercase text-gray-500">OR EMAIL</span>
+            <div className="flex-1 h-px bg-gray-400" />
           </div>
 
+          {/* Manual login */}
           <div className="space-y-6">
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email Address" className="w-full px-6 py-4.5 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-semibold text-gray-900 placeholder-gray-400 outline-none focus:border-amber-400 focus:bg-white" />
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" onKeyDown={(e) => e.key === "Enter" && handleManualLogin()} className="w-full px-6 py-4.5 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-semibold text-gray-900 placeholder-gray-400 outline-none focus:border-amber-400 focus:bg-white" />
-
-            <button onClick={handleManualLogin} disabled={loading} className="w-full py-5 rounded-2xl text-[11px] font-black uppercase tracking-widest bg-amber-900 text-white shadow-xl hover:bg-black transition-all">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email Address"
+              className="w-full px-6 py-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-semibold text-gray-900 placeholder-gray-400 outline-none focus:border-amber-400 focus:bg-white"
+            />
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              onKeyDown={(e) => e.key === "Enter" && handleManualLogin()}
+              className="w-full px-6 py-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-semibold text-gray-900 placeholder-gray-400 outline-none focus:border-amber-400 focus:bg-white"
+            />
+            <button
+              onClick={handleManualLogin}
+              disabled={loading}
+              className="w-full py-5 rounded-2xl text-[11px] font-black uppercase tracking-widest bg-amber-900 text-white shadow-xl hover:bg-black transition-all disabled:opacity-60"
+            >
               {loading && !isPolling ? "Verifying..." : "Sign In"}
             </button>
           </div>
 
           <div className="mt-10 pt-8 border-t text-center text-sm font-medium text-gray-500">
-            New here? <Link href="/signup" className="text-amber-900 font-black hover:underline ml-1">Create Account</Link>
+            New here?{" "}
+            <Link href="/signup" className="text-amber-900 font-black hover:underline ml-1">
+              Create Account
+            </Link>
           </div>
         </div>
       </div>
