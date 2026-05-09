@@ -87,7 +87,7 @@ export default function LoginPage() {
           // PATH FIX: /api/auth/truecaller/status  (not /api/truecaller/status)
           // cache-busting _= param + no-store header to bypass all caching
           const res = await fetch(
-            `/api/auth/truecaller/status?nonce=${nonce}&_=${Date.now()}`,
+            `/api/truecaller/status?nonce=${nonce}&_=${Date.now()}`,
             { cache: "no-store", headers: { "Cache-Control": "no-cache", Pragma: "no-cache" } }
           );
           if (!res.ok) return;

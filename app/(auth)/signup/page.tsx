@@ -78,7 +78,7 @@ export default function SignupPage() {
       pollRef.current = setInterval(async () => {
         try {
           const res = await fetch(
-            `/api/auth/truecaller/status?nonce=${nonce}&_=${Date.now()}`,
+            `/api/truecaller/status?nonce=${nonce}&_=${Date.now()}`,
             { cache: "no-store", headers: { "Cache-Control": "no-cache", Pragma: "no-cache" } }
           );
           if (!res.ok) return;
