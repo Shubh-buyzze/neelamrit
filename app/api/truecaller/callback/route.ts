@@ -1,16 +1,15 @@
 /**
- * FILE: src/app/api/auth/truecaller/callback/route.ts
+ * FILE: src/app/api/truecaller/callback/route.ts
  *
- * Truecaller POSTs JSON here after user approves:
- * { "requestId": "...", "accessToken": "...", "endpoint": "https://profile4.truecaller.com/v1/default" }
+ * ── BUG FIXED: "Invalid login credentials" ─────────────────────────────────
+ * Old code: used realEmail (from Truecaller) as Supabase Auth email if available.
+ * Frontend: ALWAYS calls signInWithPassword with phone@neelamrit.com.
+ * Result: email mismatch → "Invalid login credentials".
  *
- * Flow:
- * 1. Parse JSON body
- * 2. Fetch profile from Truecaller using the dynamic `endpoint` field
- * 3. Find or create Supabase Auth user
- * 4. Upsert users_profile with all available data
- * 5. Write to tc_auth_requests → frontend polls this to know login succeeded
- * 6. Store `is_new_user` flag → frontend redirects new users to /complete-profile
+ * Fix: Auth email = ALWAYS phone@neelamrit.com. No exceptions.
+ *      Real email → ONLY in users_profile.email (shown in UI, not for login).
+ *
+ * ── PATH: /api/truecaller/callback  (status: /api/truecaller/status) ────────
  */
 
 import { NextResponse } from "next/server";
@@ -31,8 +30,7 @@ async function processTruecallerAuth(
 ) {
   console.log("[TC-Webhook] Processing:", { requestId, profileEndpoint });
 
-  // ── Step 1: Fetch profile from Truecaller ───────────────────────────────────
-  // Use the dynamic `endpoint` Truecaller sends (region-aware), never hardcode it
+  // ── Step 1: Fetch profile from Truecaller ──────────────────────────────────
   const profileRes = await fetch(profileEndpoint, {
     method: "GET",
     headers: { Authorization: `Bearer ${accessToken}`, "Cache-Control": "no-cache" },
@@ -47,7 +45,7 @@ async function processTruecallerAuth(
   const profile = await profileRes.json();
   console.log("[TC-Webhook] Raw profile:", JSON.stringify(profile));
 
-  // ── Step 2: Extract all fields ──────────────────────────────────────────────
+  // ── Step 2: Extract all fields ────────────────────────────────────────────
   const rawPhone =
     (Array.isArray(profile.phoneNumbers) ? profile.phoneNumbers[0] : null) ||
     profile.phoneNumber || "";
@@ -58,27 +56,29 @@ async function processTruecallerAuth(
   const fullName  = `${firstName} ${lastName}`.trim() || "";
   const avatarUrl = profile.avatarUrl || profile.avatar || null;
 
-  // Truecaller rarely sends real email — check both known locations
+  // Real email from Truecaller — saved to profile table, NEVER used for Auth
   const realEmail: string | null =
     profile.onlineIdentities?.email || profile.email || null;
 
   if (!phone) throw new Error("Phone number missing in Truecaller profile");
 
-  // Ghost email = internal Auth identifier only (NEVER shown in UI)
+  // ── GHOST EMAIL: the ONLY email ever used for Supabase Auth ───────────────
+  // Formula: phone@neelamrit.com — deterministic, always same for same phone.
+  // Frontend also computes: `${data.phone}@neelamrit.com` → always matches.
+  // Real email lives ONLY in users_profile.email, never in auth.users.email.
   const ghostEmail = `${phone}@neelamrit.com`;
-  // Use real email in Auth if available, so user can also login with email+pass
-  const authEmail  = realEmail ?? ghostEmail;
 
-  // Fresh temp password on every auth (always in sync between Auth + DB)
+  // Fresh temp password every request — written to tc_auth_requests so
+  // frontend can call signInWithPassword immediately after polling succeeds
   const tempPassword =
     "Tc" + Math.random().toString(36).slice(2, 8).toUpperCase() +
     Math.random().toString(36).slice(2, 6) + "!9";
 
-  // ── Step 3: Find or create Auth user ───────────────────────────────────────
+  // ── Step 3: Find or create Auth user ──────────────────────────────────────
   let userId    = "";
   let isNewUser = false;
 
-  // Check users_profile first (phone is the source of truth for Truecaller users)
+  // users_profile.phone = source of truth for Truecaller identity
   const { data: existingProfile } = await supabase
     .from("users_profile")
     .select("id, full_name")
@@ -86,42 +86,45 @@ async function processTruecallerAuth(
     .maybeSingle();
 
   if (existingProfile?.id) {
-    // ── Returning user ─────────────────────────────────────────────────────
+    // ── Returning user ───────────────────────────────────────────────────
     userId    = existingProfile.id;
     isNewUser = false;
     console.log("[TC-Webhook] Returning user:", userId);
 
-    // Always sync password so signInWithPassword works with fresh temp password
+    // MUST update password — old temp password in Auth won't match new one
     const { error: updateErr } = await supabase.auth.admin.updateUserById(userId, {
       password: tempPassword,
     });
-    if (updateErr) throw updateErr;
+    if (updateErr) {
+      console.error("[TC-Webhook] Password update failed:", updateErr);
+      throw updateErr;
+    }
 
   } else {
-    // ── New user ───────────────────────────────────────────────────────────
+    // ── New user ─────────────────────────────────────────────────────────
     isNewUser = true;
-    console.log("[TC-Webhook] New user, creating auth account for:", authEmail);
+    console.log("[TC-Webhook] Creating new user:", ghostEmail);
 
     const { data: created, error: createErr } = await supabase.auth.admin.createUser({
-      email: authEmail,
-      password: tempPassword,
-      email_confirm: true,
+      email:         ghostEmail,   // ghost email always — NEVER real email
+      password:      tempPassword,
+      email_confirm: true,         // skip email verification
       user_metadata: { full_name: fullName, phone, avatar_url: avatarUrl },
     });
 
     if (createErr) {
-      // Auth user exists but users_profile row doesn't → fallback
+      // ghost email already in Auth but profile row missing (prior crash recovery)
       if (
         createErr.message?.includes("already been registered") ||
         (createErr as any).code === "email_exists"
       ) {
-        console.warn("[TC-Webhook] Email exists in Auth but no profile row. Finding user...");
+        console.warn("[TC-Webhook] Ghost email exists in Auth, recovering...");
         const { data: listData } = await supabase.auth.admin.listUsers({ perPage: 1000 });
-        const existing = listData?.users?.find((u) => u.email === authEmail);
+        const existing = listData?.users?.find((u) => u.email === ghostEmail);
         if (!existing) throw new Error("Auth user not found after email_exists error");
-        userId = existing.id;
+        userId    = existing.id;
+        isNewUser = false;
         await supabase.auth.admin.updateUserById(userId, { password: tempPassword });
-        isNewUser = false; // treat as returning since Auth row existed
       } else {
         throw createErr;
       }
@@ -132,25 +135,22 @@ async function processTruecallerAuth(
 
   console.log("[TC-Webhook] userId:", userId, "isNewUser:", isNewUser);
 
-  // ── Step 4: Upsert users_profile ───────────────────────────────────────────
-  // Always use `id` as conflict key (DB trigger may have pre-created the row)
-  // profile_complete = false for new users → frontend will redirect to /complete-profile
+  // ── Step 4: Upsert users_profile ──────────────────────────────────────────
   const profilePayload: Record<string, any> = {
-    id:               userId,
+    id:         userId,
     phone,
-    avatar_url:       avatarUrl,
-    role:             "customer",
-    updated_at:       new Date().toISOString(),
+    avatar_url: avatarUrl,
+    role:       "customer",
+    updated_at: new Date().toISOString(),
   };
 
-  // Only set full_name from Truecaller if we have one AND profile is new
-  // (don't overwrite a name the user already confirmed on /complete-profile)
+  // Pre-fill name from Truecaller only for new users (returning users keep their edited name)
   if (isNewUser && fullName) profilePayload.full_name = fullName;
 
-  // Only set email if Truecaller actually provided a real one
+  // Real email → profile table only (for display/orders), never Auth
   if (realEmail) profilePayload.email = realEmail;
 
-  // Mark profile_complete = false only for brand new users
+  // New users need to confirm name on /complete-profile
   if (isNewUser) profilePayload.profile_complete = false;
 
   const { error: profileErr } = await supabase
@@ -162,7 +162,7 @@ async function processTruecallerAuth(
     throw profileErr;
   }
 
-  // ── Step 5: Write tc_auth_requests for polling ──────────────────────────────
+  // ── Step 5: Write polling record ──────────────────────────────────────────
   const { error: authReqErr } = await supabase
     .from("tc_auth_requests")
     .upsert(
@@ -171,7 +171,7 @@ async function processTruecallerAuth(
         phone,
         temp_password: tempPassword,
         status:        "success",
-        is_new_user:   isNewUser,   // ← frontend uses this for redirect decision
+        is_new_user:   isNewUser,
         created_at:    new Date().toISOString(),
       },
       { onConflict: "nonce" }
@@ -182,11 +182,11 @@ async function processTruecallerAuth(
     throw authReqErr;
   }
 
-  console.log("[TC-Webhook] ✅ Done. nonce:", requestId, "isNewUser:", isNewUser);
+  console.log("[TC-Webhook] ✅ Done:", requestId, "| isNewUser:", isNewUser);
   return { success: true };
 }
 
-// ── POST: Truecaller sends JSON body ─────────────────────────────────────────
+// ── POST ──────────────────────────────────────────────────────────────────────
 export async function POST(req: Request) {
   try {
     let body: any = {};
@@ -202,11 +202,12 @@ export async function POST(req: Request) {
 
     console.log("[TC-Webhook] POST body:", JSON.stringify(body));
 
-    const accessToken     = body.accessToken || body.token || "";
-    const requestId       = body.requestId   || body.requestNonce || "";
-    const profileEndpoint = body.endpoint    || "https://profile4.truecaller.com/v1/default";
+    const accessToken     = body.accessToken  || body.token        || "";
+    const requestId       = body.requestId    || body.requestNonce || "";
+    const profileEndpoint = body.endpoint     || "https://profile4.truecaller.com/v1/default";
 
     if (!accessToken || !requestId) {
+      console.error("[TC-Webhook] Missing:", { hasToken: !!accessToken, hasId: !!requestId });
       return NextResponse.json({ success: false, error: "Missing accessToken or requestId" }, { status: 400 });
     }
 
@@ -217,13 +218,13 @@ export async function POST(req: Request) {
   }
 }
 
-// ── GET: fallback for Truecaller GET redirects ───────────────────────────────
+// ── GET: fallback for Truecaller GET redirects ────────────────────────────────
 export async function GET(req: Request) {
   try {
     const url             = new URL(req.url);
-    const accessToken     = url.searchParams.get("accessToken") || url.searchParams.get("token") || "";
-    const requestId       = url.searchParams.get("requestId")   || url.searchParams.get("requestNonce") || "";
-    const profileEndpoint = url.searchParams.get("endpoint")    || "https://profile4.truecaller.com/v1/default";
+    const accessToken     = url.searchParams.get("accessToken")  || url.searchParams.get("token")        || "";
+    const requestId       = url.searchParams.get("requestId")    || url.searchParams.get("requestNonce") || "";
+    const profileEndpoint = url.searchParams.get("endpoint")     || "https://profile4.truecaller.com/v1/default";
 
     if (!accessToken || !requestId) {
       return NextResponse.json({ success: false, error: "Missing accessToken or requestId" }, { status: 400 });

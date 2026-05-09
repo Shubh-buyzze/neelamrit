@@ -2,12 +2,8 @@
 
 /**
  * FILE: src/app/(auth)/signup/page.tsx
- *
- * Methods:
- * 1. Truecaller 1-tap (mobile) → new users go to /complete-profile
- * 2. Manual form → redirect to /login?registered=true
- *
- * PATH FIX: Status API = /api/auth/truecaller/status
+ * PATH FIX: Status API = /api/truecaller/status
+ * GHOST EMAIL FIX: Always phone@neelamrit.com for signInWithPassword
  */
 
 import { useState, useRef, useEffect } from "react";
@@ -31,7 +27,7 @@ function generateNonce(): string {
 export default function SignupPage() {
   const [form, setForm] = useState({ full_name: "", phone: "", email: "", password: "" });
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [status, setStatus]       = useState<"idle" | "loading" | "polling" | "success" | "error">("idle");
+  const [status, setStatus]       = useState<"idle"|"loading"|"polling"|"success"|"error">("idle");
   const [statusMsg, setStatusMsg] = useState("");
   const [errorMsg, setErrorMsg]   = useState("");
   const [isMobile, setIsMobile]   = useState(false);
@@ -46,7 +42,7 @@ export default function SignupPage() {
 
   useEffect(() => {
     setIsMobile(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
-    return () => { stopPolling(); };
+    return () => stopPolling();
   }, []);
 
   const stopPolling = () => {
@@ -91,13 +87,12 @@ export default function SignupPage() {
 
             const ghostEmail = `${data.phone}@neelamrit.com`;
             const { error: authErr } = await supabase.auth.signInWithPassword({
-              email: ghostEmail,
+              email:    ghostEmail,
               password: data.temp_password,
             });
 
             if (authErr) { showError(`Login Error: ${authErr.message}`); return; }
-
-            // All Truecaller signups → complete-profile (naam confirm karwana hai)
+            // Truecaller signups always go to complete-profile
             window.location.assign("/complete-profile");
           }
         } catch (e: any) {
@@ -124,8 +119,7 @@ export default function SignupPage() {
 
     try {
       const { data: authData, error: authErr } = await supabase.auth.signUp({
-        email: form.email,
-        password: form.password,
+        email: form.email, password: form.password,
         options: { data: { full_name: form.full_name } },
       });
       if (authErr) throw authErr;
@@ -133,20 +127,14 @@ export default function SignupPage() {
       if (authData.user) {
         await supabase.from("users_profile").upsert(
           {
-            id:               authData.user.id,
-            full_name:        form.full_name,
-            phone:            form.phone,
-            email:            form.email,
-            role:             "customer",
-            profile_complete: true, // manual signup = fields already filled
+            id: authData.user.id, full_name: form.full_name, phone: form.phone,
+            email: form.email, role: "customer", profile_complete: true,
           },
           { onConflict: "id" }
         );
       }
       window.location.assign("/login?registered=true");
-    } catch (err: any) {
-      showError(err.message);
-    }
+    } catch (err: any) { showError(err.message); }
   };
 
   const isLoading = status === "loading" || status === "polling";
@@ -156,14 +144,12 @@ export default function SignupPage() {
     <div className="min-h-screen bg-[#fafaf9] flex items-center justify-center p-4 font-sans">
       <div className="relative w-full max-w-5xl mx-auto bg-white rounded-[2.5rem] shadow-xl flex flex-col lg:flex-row overflow-hidden border border-gray-100">
 
-        {/* Left panel */}
         <div className="flex-1 bg-amber-50/60 p-12 hidden lg:flex flex-col items-center justify-center border-r border-amber-100">
           <DotLottiePlayer src="/login-anim.lottie" autoplay loop className="w-72 h-72" />
           <h2 className="font-serif text-3xl font-bold text-gray-800 mt-6 text-center">परिवार में शामिल हों</h2>
           <p className="text-gray-500 text-sm mt-2 text-center">Authentic Neelam & Gemstones</p>
         </div>
 
-        {/* Right: form */}
         <div className="flex-1 p-8 lg:p-14 flex flex-col justify-center">
           <div className="text-center mb-7">
             <h1 className="font-serif text-4xl font-black text-gray-900 tracking-tighter">NEELAMRIT</h1>
@@ -193,7 +179,6 @@ export default function SignupPage() {
                 </svg>
                 {status === "polling" ? "Approve करें Truecaller में..." : status === "loading" ? "खुल रहा है..." : "1-Click Signup with Truecaller"}
               </button>
-
               <div className="flex items-center gap-3 mb-5">
                 <div className="flex-1 h-px bg-gray-200"/>
                 <span className="text-[10px] font-bold uppercase text-gray-400 tracking-widest">या manually</span>
@@ -204,20 +189,15 @@ export default function SignupPage() {
 
           <div className="space-y-4">
             {[
-              { key: "full_name", type: "text",     placeholder: "पूरा नाम (Full Name)" },
-              { key: "phone",     type: "tel",      placeholder: "Phone Number (10 अंक)" },
-              { key: "email",     type: "email",    placeholder: "Email Address" },
-              { key: "password",  type: "password", placeholder: "Password बनाएं" },
-            ].map(({ key, type, placeholder }) => (
+              { key: "full_name", type: "text",     ph: "पूरा नाम (Full Name)" },
+              { key: "phone",     type: "tel",      ph: "Phone Number (10 अंक)" },
+              { key: "email",     type: "email",    ph: "Email Address" },
+              { key: "password",  type: "password", ph: "Password बनाएं" },
+            ].map(({ key, type, ph }) => (
               <input
-                key={key} type={type} placeholder={placeholder} disabled={isLoading || isSuccess}
+                key={key} type={type} placeholder={ph} disabled={isLoading || isSuccess}
                 value={form[key as keyof typeof form]}
-                onChange={(e) => {
-                  const val = key === "phone"
-                    ? e.target.value.replace(/\D/g, "").slice(0, 10)
-                    : e.target.value;
-                  setForm({ ...form, [key]: val });
-                }}
+                onChange={(e) => setForm({ ...form, [key]: key === "phone" ? e.target.value.replace(/\D/g,"").slice(0,10) : e.target.value })}
                 className="w-full px-5 py-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-medium text-gray-900 placeholder-gray-400 outline-none focus:border-amber-400 focus:bg-white transition-colors disabled:opacity-60"
               />
             ))}

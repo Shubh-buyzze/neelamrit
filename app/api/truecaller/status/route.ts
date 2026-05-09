@@ -1,17 +1,16 @@
 /**
- * FILE: src/app/api/auth/truecaller/status/route.ts
+ * FILE: src/app/api/truecaller/status/route.ts
  *
- * Frontend polls this every 2s after triggering Truecaller deeplink.
+ * Frontend polls this every 2s to check if Truecaller webhook has processed login.
  * Returns: { status, phone, temp_password, is_new_user }
  *
- * CRITICAL: force-dynamic + no-store headers prevent ALL caching.
- * Without this, Next.js serves cached "pending" forever → polling stuck.
+ * force-dynamic + no-store headers = zero caching (prevents "pending" stuck bug)
  */
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-export const dynamic   = "force-dynamic";
+export const dynamic    = "force-dynamic";
 export const revalidate = 0;
 
 const supabase = createClient(
@@ -20,18 +19,17 @@ const supabase = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
-const NO_CACHE_HEADERS = {
+const NO_CACHE = {
   "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
   Pragma:          "no-cache",
   Expires:         "0",
-  "Surrogate-Control": "no-store",
 };
 
 export async function GET(req: Request) {
   const nonce = new URL(req.url).searchParams.get("nonce");
 
   if (!nonce) {
-    return NextResponse.json({ status: "pending" }, { headers: NO_CACHE_HEADERS });
+    return NextResponse.json({ status: "pending" }, { headers: NO_CACHE });
   }
 
   const { data, error } = await supabase
@@ -44,6 +42,6 @@ export async function GET(req: Request) {
 
   return NextResponse.json(
     data ?? { status: "pending" },
-    { headers: NO_CACHE_HEADERS }
+    { headers: NO_CACHE }
   );
 }
