@@ -1,17 +1,19 @@
 /**
- * TRUECALLER STATUS POLLING API
- * Path: /api/auth/truecaller/status/route.ts
+ * ╔══════════════════════════════════════════════════════════════════════════╗
+ * ║  FILE:  src/app/api/truecaller/status/route.ts                          ║
+ * ║  Frontend yahan poll karta hai har 2s mein                              ║
+ * ╚══════════════════════════════════════════════════════════════════════════╝
  *
- * Frontend polls this every 2s to check if webhook has processed the login.
- * Returns: { status: "pending" | "success", phone: string, temp_password: string }
+ * Returns: { status: "pending" | "success", phone, temp_password, is_new_user }
+ *
+ * CRITICAL: force-dynamic + no-store = ZERO caching.
+ * Without this, Next.js serves the first cached "pending" forever.
  */
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// CRITICAL: Disable all Next.js caching on this route.
-// Without this, Next.js returns the first cached "pending" response forever.
-export const dynamic = "force-dynamic";
+export const dynamic    = "force-dynamic";
 export const revalidate = 0;
 
 const supabase = createClient(
@@ -20,39 +22,39 @@ const supabase = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
-export async function GET(req: Request) {
-  const nonce = new URL(req.url).searchParams.get("nonce");
+// These headers prevent ALL layers of caching: Next.js, CDN, browser
+const NO_CACHE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+  Pragma:          "no-cache",
+  Expires:         "0",
+  "Surrogate-Control": "no-store",
+};
 
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const nonce = searchParams.get("nonce");
+
+  // No nonce → still pending
   if (!nonce) {
-    return NextResponse.json(
-      { status: "pending", error: "No nonce provided" },
-      {
-        headers: {
-          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-          Pragma: "no-cache",
-          Expires: "0",
-        },
-      }
-    );
+    return NextResponse.json({ status: "pending" }, { headers: NO_CACHE_HEADERS });
   }
 
   const { data, error } = await supabase
     .from("tc_auth_requests")
-    .select("status, phone, temp_password")
+    .select("status, phone, temp_password, is_new_user")
     .eq("nonce", nonce)
     .maybeSingle();
 
-  if (error) console.error("[TC-Status] DB error:", error);
+  if (error) {
+    console.error("[TC-Status] DB error:", error.message);
+    // Return pending on DB error — don't break the poll loop
+    return NextResponse.json({ status: "pending" }, { headers: NO_CACHE_HEADERS });
+  }
 
-  const response = data ?? { status: "pending" };
+  // Row not yet created by webhook → pending
+  if (!data) {
+    return NextResponse.json({ status: "pending" }, { headers: NO_CACHE_HEADERS });
+  }
 
-  return NextResponse.json(response, {
-    headers: {
-      // Prevent ALL caching — browser, CDN, Next.js
-      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-      Pragma: "no-cache",
-      Expires: "0",
-      "Surrogate-Control": "no-store",
-    },
-  });
+  return NextResponse.json(data, { headers: NO_CACHE_HEADERS });
 }
