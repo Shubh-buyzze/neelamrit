@@ -56,10 +56,10 @@ export default function CartPage() {
         <Navbar />
         <div className="min-h-screen bg-[#f1f3f6] pt-24 pb-12 flex items-start justify-center">
           <div className="w-full max-w-4xl bg-white mx-4 mt-8 py-16 rounded-sm shadow-sm flex flex-col items-center justify-center">
-            <h2 className="text-lg font-bold text-gray-900 mb-2">Aapka Cart khaali hai</h2>
-            <p className="text-xs text-gray-500 mb-6">Lagta hai aapne abhi tak kuch add nahi kiya.</p>
+            <h2 className="text-lg font-bold text-gray-900 mb-2">Cart is Empty</h2>
+            <p className="text-xs text-gray-500 mb-6">You are not added any product to cart.</p>
             <Link href="/" className="bg-amber-800 text-white px-10 py-2.5 rounded-sm font-bold text-sm shadow-sm hover:bg-amber-900 transition-colors">
-              Abhi Shop Karein
+              Order Now
             </Link>
           </div>
         </div>

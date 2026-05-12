@@ -15,9 +15,9 @@ export default function SignatureBoxPage() {
 
   // Media Gallery Setup
   const media = [
-    { type: "image", url: "/hero-box.png" },
+    { type: "image", url: "/hero-box.webp" },
     { type: "image", url: "/sig-2.png" },
-    { type: "video", url: "/video-2.mp4" }
+    { type: "video", url: "/video-1.mp4" }
   ];
 
   // Gallery States & Swipe Logic

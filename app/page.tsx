@@ -437,7 +437,7 @@ function LaunchOfferSection() {
           className="mt-8 md:mt-10 flex items-center justify-center w-full overflow-hidden"
         >
           <h3 className="text-[13px] sm:text-[18px] md:text-[24px] lg:text-[28px] font-black text-green-600 uppercase tracking-widest whitespace-nowrap text-center w-full">
-            48-HOURS DELIVERY IN VARANASI
+            12-HOURS DELIVERY IN VARANASI
           </h3>
         </motion.div>
 

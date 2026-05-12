@@ -4,20 +4,6 @@
  * ╔══════════════════════════════════════════════════════════════════════════╗
  * ║  FILE:  src/app/(auth)/login/page.tsx                                   ║
  * ╚══════════════════════════════════════════════════════════════════════════╝
- *
- * Login methods:
- *   A) Truecaller 1-tap  (mobile — Truecaller app installed hona chahiye)
- *   B) Email + Password  (manual — sab devices pe)
- *
- * Truecaller flow:
- *   1. Nonce generate karo
- *   2. Deep link trigger karo (Truecaller app open hoti hai)
- *   3. Poll /api/truecaller/status?nonce=... har 2s
- *   4. Success milne pe ghost email se signInWithPassword
- *   5. New user → /complete-profile | Returning → /
- *
- * Ghost email formula: `${data.phone}@neelamrit.com`
- * Webhook bhi same formula use karta hai → hamesha match karega.
  */
 
 import { useState, useRef, useEffect } from "react";
@@ -30,41 +16,41 @@ const DotLottiePlayer = dynamic(
   { ssr: false }
 );
 
-// Cryptographically-safe enough nonce for this use case
 function generateNonce(): string {
   const a = Math.random().toString(36).slice(2, 12);
   const b = Date.now().toString(36);
   const c = Math.random().toString(36).slice(2, 8);
-  return `${a}${b}${c}`; // ~26 chars, alphanumeric
+  return `${a}${b}${c}`; 
 }
 
 export default function LoginPage() {
-  const [email,     setEmail]     = useState("");
-  const [password,  setPassword]  = useState("");
-  const [tcStatus,  setTcStatus]  = useState<"idle"|"loading"|"polling"|"success"|"error">("idle");
-  const [statusMsg, setStatusMsg] = useState("");
-  const [errorMsg,  setErrorMsg]  = useState("");
-  const [isMobile,  setIsMobile]  = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  
+  // Multi-step manual login state
+  const [manualStep, setManualStep] = useState<1 | 2>(1);
 
-  // Refs to avoid stale closure issues in setInterval
-  const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null);
-  const killRef    = useRef<ReturnType<typeof setTimeout>  | null>(null);
+  const [tcStatus, setTcStatus] = useState<"idle" | "loading" | "polling" | "success" | "error">("idle");
+  const [statusMsg, setStatusMsg] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+  const [isMobile, setIsMobile] = useState(false);
+
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const killRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Detect mobile once on mount (Truecaller only works on mobile)
   useEffect(() => {
     setIsMobile(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
-    // Cleanup timers on unmount
     return () => stopPolling();
   }, []);
 
   function stopPolling() {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-    if (killRef.current) { clearTimeout(killRef.current);  killRef.current  = null; }
+    if (killRef.current) { clearTimeout(killRef.current); killRef.current = null; }
   }
 
   function showError(msg: string) {
@@ -74,38 +60,31 @@ export default function LoginPage() {
     setStatusMsg("");
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // TRUECALLER LOGIN
-  // ══════════════════════════════════════════════════════════════════════════
+  // ── TRUECALLER LOGIN ───────────────────────────────────────────────────────
   function handleTruecallerLogin() {
     setTcStatus("loading");
-    setStatusMsg("Truecaller App खुल रही है...");
+    setStatusMsg("Opening Truecaller...");
     setErrorMsg("");
 
-    const nonce      = generateNonce();
+    const nonce = generateNonce();
     const partnerKey = process.env.NEXT_PUBLIC_TRUECALLER_KEY;
 
-    // Trigger Truecaller deep link — app opens on user's phone
     window.location.href = [
       "truecallersdk://truesdk/web_verify",
       `?requestNonce=${nonce}`,
       `&partnerKey=${partnerKey}`,
       `&partnerName=Neelamrit`,
-      `&lang=hi`,
+      `&lang=en`,
       `&title=logIn`,
       `&skipOption=useDifferentNumber`,
     ].join("");
 
-    // Start polling after 800ms (give Truecaller time to intercept the URL)
     const pollDelay = setTimeout(() => {
       setTcStatus("polling");
-      setStatusMsg("Truecaller में Approve करें...");
+      setStatusMsg("Awaiting approval in Truecaller...");
 
       pollRef.current = setInterval(async () => {
         try {
-          // Two layers of cache-busting:
-          // 1. `_=` timestamp query param (for aggressive CDNs)
-          // 2. cache: "no-store" + headers (for browser and Next.js)
           const res = await fetch(
             `/api/truecaller/status?nonce=${encodeURIComponent(nonce)}&_=${Date.now()}`,
             {
@@ -114,66 +93,63 @@ export default function LoginPage() {
             }
           );
 
-          // Non-2xx = network blip, keep polling
-          if (!res.ok) {
-            console.warn("[TC-Poll] Non-OK response:", res.status);
-            return;
-          }
+          if (!res.ok) return;
 
           const data = await res.json();
-          console.log("[TC-Poll] status:", data.status, "| isNew:", data.is_new_user);
+          if (data.status !== "success") return;
 
-          if (data.status !== "success") return; // still pending
-
-          // ── SUCCESS ────────────────────────────────────────────────────────
           stopPolling();
           setTcStatus("success");
-          setStatusMsg("Verified! Login हो रहा है...");
+          setStatusMsg("Verification successful. Logging in...");
 
-          // Ghost email — same formula as webhook, always matches
           const ghostEmail = `${data.phone}@neelamrit.com`;
 
           const { error: authErr } = await supabase.auth.signInWithPassword({
-            email:    ghostEmail,
+            email: ghostEmail,
             password: data.temp_password,
           });
 
           if (authErr) {
-            console.error("[TC-Login] signInWithPassword error:", authErr.message);
-            showError("Login नहीं हो सका। दोबारा try करें।");
+            showError("Authentication failed. Please try again.");
             return;
           }
 
-          // New user → complete profile first, else go home
           window.location.assign(data.is_new_user ? "/complete-profile" : "/");
 
         } catch (fetchErr: unknown) {
-          // Single network error → don't stop polling (temporary blip)
           console.warn("[TC-Poll] Fetch error (will retry):", fetchErr);
         }
-      }, 2000); // poll every 2 seconds
+      }, 2000); 
     }, 800);
 
-    // Kill polling after 90 seconds (user took too long or dismissed Truecaller)
     killRef.current = setTimeout(() => {
       clearTimeout(pollDelay);
-      showError("Request timeout हो गया। दोबारा try करें।");
+      showError("Request timed out. Please try again.");
     }, 90_000);
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // EMAIL + PASSWORD LOGIN
-  // ══════════════════════════════════════════════════════════════════════════
-  async function handleEmailLogin() {
-    if (!email.trim())    { setErrorMsg("Email डालें"); return; }
-    if (!password.trim()) { setErrorMsg("Password डालें"); return; }
+  // ── MANUAL LOGIN LOGIC ─────────────────────────────────────────────────────
+  function handleEmailContinue() {
+    if (!email.trim() || !email.includes("@")) {
+      setErrorMsg("Please enter a valid email address.");
+      return;
+    }
+    setErrorMsg("");
+    setManualStep(2);
+  }
+
+  async function handlePasswordSubmit() {
+    if (!password.trim()) { 
+      setErrorMsg("Please enter your password."); 
+      return; 
+    }
 
     setTcStatus("loading");
-    setStatusMsg("Verifying...");
+    setStatusMsg("Authenticating...");
     setErrorMsg("");
 
     const { error: authErr } = await supabase.auth.signInWithPassword({
-      email:    email.trim(),
+      email: email.trim(),
       password: password.trim(),
     });
 
@@ -181,14 +157,13 @@ export default function LoginPage() {
       setTcStatus("error");
       setErrorMsg(
         authErr.message === "Invalid login credentials"
-          ? "Email या Password गलत है।"
+          ? "Incorrect email or password."
           : authErr.message
       );
       setStatusMsg("");
       return;
     }
 
-    // Check if this email-login user needs to complete profile
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const { data: prof } = await supabase
@@ -210,120 +185,164 @@ export default function LoginPage() {
   const isSuccess = tcStatus === "success";
 
   return (
-    <div className="min-h-screen bg-[#fafaf9] flex items-center justify-center p-4 font-sans">
-      <div className="relative w-full max-w-5xl mx-auto bg-white rounded-[2.5rem] shadow-xl overflow-hidden flex flex-col lg:flex-row border border-gray-100">
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 font-sans text-gray-900">
+      <div className="relative w-full max-w-4xl mx-auto bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col md:flex-row">
 
-        {/* ── Left decorative panel (desktop only) ──────────────────────────── */}
-        <div className="flex-1 bg-amber-50/60 p-12 hidden lg:flex flex-col items-center justify-center border-r border-amber-100">
-          <DotLottiePlayer src="/login-anim.lottie" autoplay loop className="w-72 h-72" />
-          <h2 className="font-serif text-3xl font-bold text-gray-800 mt-6 text-center">
-            वापस आपका स्वागत है!
+        {/* ── Left decorative panel (Desktop) ────────────────────────────── */}
+        <div className="flex-1 bg-gray-50 p-12 hidden md:flex flex-col items-center justify-center border-r border-gray-100">
+          <DotLottiePlayer src="/login-anim.lottie" autoplay loop className="w-64 h-64" />
+          <h2 className="font-serif text-2xl font-medium text-gray-900 mt-6 tracking-tight text-center">
+            Welcome Back
           </h2>
-          <p className="text-gray-500 text-sm mt-2 text-center">Authentic Neelam &amp; Gemstones</p>
+          <p className="text-gray-500 text-sm mt-2 text-center tracking-wide">
+            Authentic Neelam & Gemstones
+          </p>
         </div>
 
-        {/* ── Right: login form ──────────────────────────────────────────────── */}
-        <div className="flex-1 p-8 lg:p-14 flex flex-col justify-center">
+        {/* ── Right: Login Form ──────────────────────────────────────────── */}
+        <div className="flex-1 p-8 md:p-12 flex flex-col justify-center">
 
-          {/* Brand */}
-          <div className="text-center mb-8">
-            <h1 className="font-serif text-4xl font-black text-gray-900 tracking-tighter">NEELAMRIT</h1>
-            <p className="text-gray-400 text-xs mt-1 font-medium tracking-widest uppercase">
-              Login to your account
+          <div className="mb-8">
+            <h1 className="font-serif text-3xl font-semibold text-gray-900 tracking-tight">
+              NEELAMRIT
+            </h1>
+            <p className="text-gray-500 text-sm mt-1">
+              Sign in to your account
             </p>
           </div>
 
-          {/* Status / Error banners */}
+          {/* Status & Error Messages */}
           {statusMsg && (
-            <div className="mb-5 p-4 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs font-semibold flex items-center gap-2">
-              <span className="text-base">{isSuccess ? "✅" : "⏳"}</span>
+            <div className="mb-6 flex items-center gap-3 text-sm font-medium text-gray-700 animate-in fade-in duration-300">
+              <span className="w-4 h-4 border-2 border-gray-300 border-t-gray-800 rounded-full animate-spin" />
               {statusMsg}
             </div>
           )}
+
           {errorMsg && (
-            <div className="mb-5 p-4 rounded-2xl bg-red-50 border border-red-100 text-red-700 text-xs font-semibold flex items-center gap-2">
-              <span className="text-base">⚠️</span>
-              {errorMsg}
+            <div className="mb-6 p-3 rounded-md bg-red-50 border border-red-100 text-red-600 text-sm font-medium flex justify-between items-center animate-in fade-in">
+              <span>{errorMsg}</span>
               {tcStatus === "error" && (
                 <button
-                  onClick={() => { setTcStatus("idle"); setErrorMsg(""); setStatusMsg(""); }}
-                  className="ml-auto text-red-400 hover:text-red-600 font-black text-xs underline"
+                  onClick={() => { setTcStatus("idle"); setErrorMsg(""); }}
+                  className="text-red-500 hover:text-red-700 underline text-xs ml-4"
                 >
-                  Retry
+                  Dismiss
                 </button>
               )}
             </div>
           )}
 
-          {/* ── Truecaller button — only on mobile ──────────────────────────── */}
-          {isMobile && (
-            <>
+          {/* ── Truecaller Button (Mobile Only) ──────────────────────────── */}
+          {isMobile && manualStep === 1 && (
+            <div className="mb-6 animate-in fade-in">
               <button
                 onClick={handleTruecallerLogin}
                 disabled={isLoading || isSuccess}
-                className="w-full mb-5 flex items-center justify-center gap-3 bg-[#0087FF] hover:bg-[#006FD6] active:scale-95 text-white py-4 px-6 rounded-2xl text-sm font-black tracking-wide shadow-lg transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-800 hover:bg-gray-50 transition-colors disabled:opacity-50"
               >
-                {/* Truecaller icon */}
-                <svg width="22" height="22" viewBox="0 0 40 40" fill="none" aria-hidden="true">
-                  <circle cx="20" cy="20" r="20" fill="white" fillOpacity="0.2" />
-                  <path
-                    d="M20 8C13.4 8 8 13.4 8 20s5.4 12 12 12 12-5.4 12-12S26.6 8 20 8zm0 4c1.8 0 3.5.5 5 1.4l-9.6 9.6c-.9-1.5-1.4-3.2-1.4-5 0-4.4 3.6-8 8-8zm0 16c-1.8 0-3.5-.5-5-1.4l9.6-9.6c.9 1.5 1.4 3.2 1.4 5 0 4.4-3.6 8-8 8z"
-                    fill="white"
-                  />
-                </svg>
-                {tcStatus === "polling"
-                  ? "Truecaller में Approve करें..."
-                  : tcStatus === "loading"
-                  ? "खुल रहा है..."
-                  : "1-Click Login with Truecaller"}
+                {/* 1. Truecaller Logo (Round) */}
+                <img 
+                  src="/truecaller-logo.webp" 
+                  alt="Truecaller Icon" 
+                  className="w-5 h-5 object-contain" 
+                />
+                
+                {/* 2. Normal Text */}
+                <span>1-click Login with</span>
+                
+                {/* 3. Truecaller Text (Name Image) */}
+                <img 
+                  src="/truecaller-text.webp" 
+                  alt="Truecaller" 
+                  className="h-4 object-contain mt-0.5" 
+                />
               </button>
 
-              {/* Divider */}
-              <div className="flex items-center gap-3 mb-5">
+              <div className="flex items-center gap-3 my-6">
                 <div className="flex-1 h-px bg-gray-200" />
-                <span className="text-[10px] font-bold uppercase text-gray-400 tracking-widest">
-                  या Email से
+                <span className="text-[10px] uppercase text-gray-400 font-semibold tracking-widest">
+                  Or use email
                 </span>
                 <div className="flex-1 h-px bg-gray-200" />
               </div>
-            </>
+            </div>
           )}
 
-          {/* ── Email + Password ─────────────────────────────────────────────── */}
-          <div className="space-y-4">
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email Address"
-              disabled={isLoading || isSuccess}
-              autoComplete="email"
-              className="w-full px-5 py-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-medium text-gray-900 placeholder-gray-400 outline-none focus:border-amber-400 focus:bg-white transition-colors disabled:opacity-60"
-            />
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Password"
-              disabled={isLoading || isSuccess}
-              autoComplete="current-password"
-              onKeyDown={(e) => { if (e.key === "Enter") handleEmailLogin(); }}
-              className="w-full px-5 py-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-medium text-gray-900 placeholder-gray-400 outline-none focus:border-amber-400 focus:bg-white transition-colors disabled:opacity-60"
-            />
-            <button
-              onClick={handleEmailLogin}
-              disabled={isLoading || isSuccess}
-              className="w-full py-4 rounded-2xl text-xs font-black uppercase tracking-widest bg-amber-900 hover:bg-gray-900 text-white shadow-lg transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {isLoading && tcStatus === "loading" ? "Verifying..." : "Sign In"}
-            </button>
+          {/* ── Manual Login (Multi-step) ────────────────────────────────── */}
+          <div className="space-y-5">
+            
+            {/* Step 1: Email */}
+            {manualStep === 1 ? (
+              <div className="animate-in slide-in-from-right-4 fade-in duration-300">
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Email address
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleEmailContinue(); }}
+                  placeholder="Enter your email"
+                  disabled={isLoading || isSuccess}
+                  autoComplete="email"
+                  className="w-full px-4 py-2.5 rounded-md text-sm bg-white border border-gray-300 outline-none transition-colors focus:border-gray-900 focus:ring-1 focus:ring-gray-900 disabled:opacity-50"
+                />
+                <button
+                  onClick={handleEmailContinue}
+                  disabled={isLoading || isSuccess}
+                  className="w-full mt-4 py-3 rounded-md text-sm font-medium bg-gray-900 text-white transition-colors hover:bg-gray-800 disabled:opacity-70"
+                >
+                  Continue
+                </button>
+              </div>
+            ) : (
+              /* Step 2: Password */
+              <div className="animate-in slide-in-from-right-4 fade-in duration-300">
+                <div className="flex justify-between items-center mb-4 p-3 border border-gray-200 rounded-md bg-gray-50">
+                  <span className="text-sm text-gray-600 truncate mr-4">{email}</span>
+                  <button 
+                    onClick={() => { setManualStep(1); setErrorMsg(""); setPassword(""); }}
+                    disabled={isLoading}
+                    className="text-xs font-medium text-gray-900 underline hover:text-gray-600 disabled:opacity-50"
+                  >
+                    Change
+                  </button>
+                </div>
+
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handlePasswordSubmit(); }}
+                  placeholder="Enter your password"
+                  disabled={isLoading || isSuccess}
+                  autoComplete="current-password"
+                  className="w-full px-4 py-2.5 rounded-md text-sm bg-white border border-gray-300 outline-none transition-colors focus:border-gray-900 focus:ring-1 focus:ring-gray-900 disabled:opacity-50"
+                />
+                
+                <button
+                  onClick={handlePasswordSubmit}
+                  disabled={isLoading || isSuccess}
+                  className="w-full mt-5 py-3 flex justify-center items-center gap-2 rounded-md text-sm font-medium bg-gray-900 text-white transition-colors hover:bg-gray-800 disabled:opacity-70"
+                >
+                  {isLoading && tcStatus === "loading" ? (
+                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : null}
+                  Sign In
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Footer */}
-          <div className="mt-8 pt-6 border-t border-gray-100 text-center text-sm font-medium text-gray-500">
-            New here?{" "}
-            <Link href="/signup" className="text-amber-900 font-black hover:underline ml-1">
-              Account बनाएं
+          <div className="mt-8 pt-6 border-t border-gray-100 text-center text-sm text-gray-500">
+            Don't have an account?{" "}
+            <Link href="/signup" className="text-gray-900 font-medium hover:underline ml-1">
+              Create an account
             </Link>
           </div>
         </div>
