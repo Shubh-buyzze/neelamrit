@@ -226,7 +226,7 @@ export default function CompleteProfilePage() {
                     onChange={(e) => setField("full_name", e.target.value)}
                     placeholder="Enter your full name"
                     autoComplete="name"
-                    className={`w-full px-4 py-2.5 rounded-md text-sm bg-white border transition-colors outline-none ${
+                    className={`w-full px-4 py-2.5 rounded-md text-sm text-gray-900 placeholder-gray-400 bg-white border transition-colors outline-none ${
                       nameErr 
                         ? "border-red-400 focus:border-red-500 focus:ring-1 focus:ring-red-500" 
                         : "border-gray-300 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
@@ -245,7 +245,7 @@ export default function CompleteProfilePage() {
                     onChange={(e) => setField("email", e.target.value)}
                     placeholder="name@example.com"
                     autoComplete="email"
-                    className="w-full px-4 py-2.5 rounded-md text-sm bg-white border border-gray-300 outline-none transition-colors focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                    className="w-full px-4 py-2.5 rounded-md text-sm text-gray-900 placeholder-gray-400 bg-white border border-gray-300 outline-none transition-colors focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
                   />
                 </div>
 
@@ -285,7 +285,7 @@ export default function CompleteProfilePage() {
                     placeholder="House number, building, street"
                     disabled={isSaving}
                     autoComplete="street-address"
-                    className="w-full px-4 py-2.5 rounded-md text-sm bg-white border border-gray-300 outline-none transition-colors focus:border-gray-800 focus:ring-1 focus:ring-gray-800 disabled:opacity-50"
+                    className="w-full px-4 py-2.5 rounded-md text-sm text-gray-900 placeholder-gray-400 bg-white border border-gray-300 outline-none transition-colors focus:border-gray-800 focus:ring-1 focus:ring-gray-800 disabled:opacity-50"
                   />
                 </div>
 
@@ -301,7 +301,7 @@ export default function CompleteProfilePage() {
                       placeholder="City"
                       disabled={isSaving}
                       autoComplete="address-level2"
-                      className="w-full px-4 py-2.5 rounded-md text-sm bg-white border border-gray-300 outline-none transition-colors focus:border-gray-800 focus:ring-1 focus:ring-gray-800 disabled:opacity-50"
+                      className="w-full px-4 py-2.5 rounded-md text-sm text-gray-900 placeholder-gray-400 bg-white border border-gray-300 outline-none transition-colors focus:border-gray-800 focus:ring-1 focus:ring-gray-800 disabled:opacity-50"
                     />
                   </div>
                   <div>
@@ -315,7 +315,7 @@ export default function CompleteProfilePage() {
                       placeholder="State"
                       disabled={isSaving}
                       autoComplete="address-level1"
-                      className="w-full px-4 py-2.5 rounded-md text-sm bg-white border border-gray-300 outline-none transition-colors focus:border-gray-800 focus:ring-1 focus:ring-gray-800 disabled:opacity-50"
+                      className="w-full px-4 py-2.5 rounded-md text-sm text-gray-900 placeholder-gray-400 bg-white border border-gray-300 outline-none transition-colors focus:border-gray-800 focus:ring-1 focus:ring-gray-800 disabled:opacity-50"
                     />
                   </div>
                 </div>
@@ -332,7 +332,7 @@ export default function CompleteProfilePage() {
                     placeholder="6-digit pincode"
                     disabled={isSaving}
                     autoComplete="postal-code"
-                    className="w-full px-4 py-2.5 rounded-md text-sm bg-white border border-gray-300 outline-none transition-colors focus:border-gray-800 focus:ring-1 focus:ring-gray-800 disabled:opacity-50"
+                    className="w-full px-4 py-2.5 rounded-md text-sm text-gray-900 placeholder-gray-400 bg-white border border-gray-300 outline-none transition-colors focus:border-gray-800 focus:ring-1 focus:ring-gray-800 disabled:opacity-50"
                   />
                 </div>
               </div>
