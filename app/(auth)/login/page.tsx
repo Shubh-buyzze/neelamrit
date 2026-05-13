@@ -1,11 +1,5 @@
 "use client";
 
-/**
- * ╔══════════════════════════════════════════════════════════════════════════╗
- * ║  FILE:  src/app/(auth)/login/page.tsx                                   ║
- * ╚══════════════════════════════════════════════════════════════════════════╝
- */
-
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -46,6 +40,19 @@ export default function LoginPage() {
   useEffect(() => {
     setIsMobile(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
     return () => stopPolling();
+  }, []);
+
+  // 🟢 AUTO-TRIGGER LOGIC
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("auto") === "true") {
+      // Thoda delay taaki page load ho jaye smoothly fir auto trigger ho
+      const timer = setTimeout(() => {
+        handleTruecallerLogin();
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function stopPolling() {
@@ -114,6 +121,9 @@ export default function LoginPage() {
             return;
           }
 
+          // 🟢 SET AUTO-LOGIN FLAG ON SUCCESS
+          localStorage.setItem("neelamrit_auth_flag", "true");
+
           window.location.assign(data.is_new_user ? "/complete-profile" : "/");
 
         } catch (fetchErr: unknown) {
@@ -166,6 +176,9 @@ export default function LoginPage() {
 
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
+      // 🟢 SET AUTO-LOGIN FLAG ON SUCCESS (MANUAL LOGIN)
+      localStorage.setItem("neelamrit_auth_flag", "true");
+
       const { data: prof } = await supabase
         .from("users_profile")
         .select("profile_complete, full_name")

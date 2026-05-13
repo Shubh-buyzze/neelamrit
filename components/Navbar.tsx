@@ -11,6 +11,7 @@ import { useCartStore } from "@/lib/store/useCartStore";
 export default function Navbar() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [userName, setUserName] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [cartCount, setCartCount] = useState(0);
   const [isMounted, setIsMounted] = useState(false);
@@ -40,7 +41,6 @@ export default function Navbar() {
     { text: "NEELAMRIT", fontClass: "font-serif font-black tracking-[0.25em]" },
   ];
 
-  // Update cart count from store
   useEffect(() => {
     const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
     setCartCount(totalItems);
@@ -67,25 +67,46 @@ export default function Navbar() {
   useEffect(() => {
     const fetchUserStatus = async () => {
       const { data: { session } } = await supabase.auth.getSession();
+      
       if (session?.user) {
         setUser(session.user);
         const { data: profile } = await supabase
           .from("users_profile")
-          .select("role")
+          .select("role, full_name")
           .eq("id", session.user.id)
           .single();
+          
         if (profile?.role === "admin") setIsAdmin(true);
+
+        const name = profile?.full_name || session.user.user_metadata?.full_name;
+        if (name) {
+          setUserName(name);
+        } else {
+          const email = session.user.email || "";
+          setUserName(email.includes("@neelamrit.com") ? `User (${email.split("@")[0]})` : email);
+        }
+      } else {
+        // 🟢 SILENT MONITOR LOGIC: Agar session nahi hai, check karo kya pehle login tha
+        const wasLoggedIn = localStorage.getItem("neelamrit_auth_flag");
+        // Agar user pehle login tha aur abhi login page par nahi hai, toh auto-trigger ke liye bhejo
+        if (wasLoggedIn === "true" && !pathname.includes("/login")) {
+          router.push("/login?auto=true");
+        }
       }
     };
     fetchUserStatus();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user || null);
-      if (!session) setIsAdmin(false);
-      else fetchUserStatus();
+      if (!session) {
+        setIsAdmin(false);
+        setUserName("");
+      } else {
+        fetchUserStatus();
+      }
     });
     return () => subscription.unsubscribe();
-  }, [supabase]);
+  }, [supabase, pathname, router]);
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -97,10 +118,14 @@ export default function Navbar() {
   }, []);
 
   const handleLogout = async () => {
+    // 🟢 REMOVE FLAG ON EXPLICIT LOGOUT
+    localStorage.removeItem("neelamrit_auth_flag");
+    
     await supabase.auth.signOut();
     setIsProfileOpen(false);
     setUser(null);
     setIsAdmin(false);
+    setUserName("");
     router.push("/login");
     router.refresh();
   };
@@ -129,9 +154,6 @@ export default function Navbar() {
                 </button>
                 {mobileMenuOpen && (
                   <div className="absolute left-0 mt-2 w-56 bg-white border border-gray-100 rounded-2xl shadow-xl py-3 z-[110] animate-in fade-in slide-in-from-top-2">
-                    <div className="px-4 pb-2 mb-2 border-b border-gray-50">
-                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Menu</p>
-                    </div>
                     <Link href="/" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 text-sm font-semibold text-gray-800 hover:bg-amber-50 transition-colors">Home</Link>
                     <Link href="/shop" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 text-sm font-semibold text-gray-800 hover:bg-amber-50 transition-colors">Shop</Link>
                     <Link href="/story" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 text-sm font-semibold text-gray-800 hover:bg-amber-50 transition-colors">Our Story</Link>
@@ -145,26 +167,30 @@ export default function Navbar() {
               </div>
             </div>
 
-            {/* CENTER: Animated Brand */}
+            {/* CENTER: Logo (Top) + Brand (Bottom) */}
             <div className="flex-shrink-0 text-center mx-2">
-              <Link href="/" className="flex flex-col items-center">
-                <div className="relative h-8 sm:h-10 flex items-center justify-center">
+              <Link href="/" className="flex flex-col items-center group">
+                <div className="relative h-10 sm:h-12 w-auto flex items-center justify-center transition-transform duration-300 group-hover:scale-105">
+                  <img 
+                    src="/favicon.webp" 
+                    alt="Logo" 
+                    className="h-full w-auto object-contain"
+                  />
+                </div>
+                <div className="relative h-4 flex items-center justify-center mt-1">
                   <span
                     key={brandIndex}
                     className={`inline-block transition-all duration-200 ease-in-out ${
                       isAnimating ? "opacity-0 scale-95" : "opacity-100 scale-100"
-                    } text-2xl sm:text-3xl font-black ${brandVariants[brandIndex].fontClass} text-black leading-none`}
+                    } text-[10px] sm:text-[12px] font-black ${brandVariants[brandIndex].fontClass} text-black leading-none uppercase`}
                   >
                     {brandVariants[brandIndex].text}
                   </span>
                 </div>
-                <span className="text-[8px] sm:text-[10px] tracking-[0.3em] text-amber-800 font-bold uppercase mt-1">
-                  Lakadwa Origins
-                </span>
               </Link>
             </div>
 
-            {/* RIGHT: Profile + Cart */}
+            {/* RIGHT SECTION: Profile + Cart */}
             <div className="flex items-center justify-end flex-1 gap-2 sm:gap-6">
               <div className="relative" ref={dropdownRef}>
                 <button
@@ -183,18 +209,17 @@ export default function Navbar() {
                       <>
                         <div className="px-5 py-4 border-b border-gray-50 mb-1 bg-gray-50/50">
                           <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Account</p>
-                          <p className="text-sm font-bold text-gray-900 truncate">{user.email}</p>
+                          <p className="text-sm font-bold text-gray-900 truncate capitalize">{userName}</p>
                         </div>
                         <Link href="/profile" onClick={() => setIsProfileOpen(false)} className="block px-5 py-3 text-sm font-semibold text-gray-800 hover:bg-amber-50 transition-colors">My Profile</Link>
                         <Link href="/orders" onClick={() => setIsProfileOpen(false)} className="block px-5 py-3 text-sm font-semibold text-gray-800 hover:bg-amber-50 transition-colors">My Orders</Link>
-                        {isAdmin && <Link href="/admin" onClick={() => setIsProfileOpen(false)} className="block px-5 py-3 text-sm font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 transition-colors border-y border-amber-100/50"><span className="mr-2">✨</span> Admin Dashboard</Link>}
+                        {isAdmin && <Link href="/admin" onClick={() => setIsProfileOpen(false)} className="block px-5 py-3 text-sm font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 transition-colors">Admin Dashboard</Link>}
                         <div className="border-t border-gray-50 mt-1">
                           <button onClick={handleLogout} className="w-full text-left px-5 py-3 text-sm font-bold text-red-600 hover:bg-red-50 transition-colors">Logout</button>
                         </div>
                       </>
                     ) : (
                       <div className="p-4">
-                        <p className="text-xs text-gray-500 font-medium text-center mb-3">Welcome to Neelamrit</p>
                         <Link href="/login" onClick={() => setIsProfileOpen(false)} className="block w-full text-center px-4 py-3.5 text-sm font-bold text-white bg-amber-900 rounded-xl hover:bg-black transition-all shadow-md active:scale-95">
                           Login / Sign Up
                         </Link>
@@ -204,7 +229,6 @@ export default function Navbar() {
                 )}
               </div>
 
-              {/* Cart button – always goes to /cart */}
               <Link
                 href="/cart"
                 className="relative group p-2 text-gray-700 hover:bg-gray-100 rounded-full transition-all"
@@ -222,11 +246,14 @@ export default function Navbar() {
         </div>
       </nav>
 
+      {/* FIXED: Mobile Location Bar (Pehle Jaisa) */}
       <div className="md:hidden fixed top-[72px] left-0 w-full z-[99] bg-white/95 backdrop-blur-md border-b border-gray-100 py-3 px-5 shadow-sm">
         <LocationBox compact />
       </div>
 
+      {/* FIXED: Spacer Heights (Pehle Jaisa) */}
       <div className="md:hidden h-[124px]" />
+      <div className="hidden md:block h-[84px]" />
     </>
   );
 }
