@@ -24,17 +24,25 @@ export default function CheckoutPage() {
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [loadingAddrs, setLoadingAddrs] = useState(true);
   
-  // Status states
   const [placingOrder, setPlacingOrder] = useState(false);
-  const [orderSuccess, setOrderSuccess] = useState(false); // Controls the Success overlay
+  const [orderSuccess, setOrderSuccess] = useState(false);
 
-  // Costs
+  // PROMO CODE STATES
+  const [promoCodeInput, setPromoCodeInput] = useState("");
+  const [appliedPromo, setAppliedPromo] = useState<string | null>(null);
+  const [promoMessage, setPromoMessage] = useState({ type: "", text: "" });
+  const [isApplyingPromo, setIsApplyingPromo] = useState(false);
+  const [isDiscountApplicable, setIsDiscountApplicable] = useState(false); // 🟢 NEW STATE
+
+  const subtotal = items.reduce((sum, item) => sum + (item.products?.price ?? 0) * item.quantity, 0);
+  
+  // 🟢 UPDATED: Discount sirf tab milega jab user ne pehle use na kiya ho
+  const discountAmount = (appliedPromo && isDiscountApplicable) ? (subtotal * 0.05) : 0; 
+  
   const platformFee = 5;
   const codHandlingFee = 15;
-  const subtotal = items.reduce((sum, item) => sum + (item.products?.price ?? 0) * item.quantity, 0);
-  const totalPayable = subtotal + platformFee + codHandlingFee; 
+  const totalPayable = subtotal - discountAmount + platformFee + codHandlingFee; 
 
-  // ✅ Fetch cart and addresses on mount
   useEffect(() => {
     fetchCart(); 
     fetchAddresses();
@@ -60,6 +68,57 @@ export default function CheckoutPage() {
     }
   }
 
+  // 🟢 UPDATED: Handle Apply Promo with 1-time discount verification
+  async function handleApplyPromo() {
+    if (!promoCodeInput.trim()) return;
+    setIsApplyingPromo(true);
+    setPromoMessage({ type: "loading", text: "Verifying code..." });
+
+    try {
+      const res = await fetch("/api/checkout/validate-promo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: promoCodeInput.trim() }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setAppliedPromo(data.code);
+        
+        if (data.alreadyUsed) {
+          // Code attach ho jayega par discount apply nahi hoga
+          setIsDiscountApplicable(false);
+          setPromoMessage({ 
+            type: "success", 
+            text: "Code applied for tracking! (Discount limit reached: Only 1 time discount per user is allowed)." 
+          });
+        } else {
+          // Code attach bhi hoga aur 5% off bhi milega
+          setIsDiscountApplicable(true);
+          setPromoMessage({ 
+            type: "success", 
+            text: "Success! 5% discount applied successfully." 
+          });
+        }
+      } else {
+        setAppliedPromo(null);
+        setIsDiscountApplicable(false);
+        setPromoMessage({ type: "error", text: data.message || "Invalid code" });
+      }
+    } catch (error) {
+      setPromoMessage({ type: "error", text: "Something went wrong" });
+    } finally {
+      setIsApplyingPromo(false);
+    }
+  }
+
+  function removePromo() {
+    setAppliedPromo(null);
+    setPromoCodeInput("");
+    setPromoMessage({ type: "", text: "" });
+    setIsDiscountApplicable(false);
+  }
+
   async function handlePlaceOrder() {
     if (!selectedAddressId) {
       alert("Please select a delivery address.");
@@ -77,23 +136,17 @@ export default function CheckoutPage() {
           address: selectedAddress,
           payment_method: "COD",
           total_amount: totalPayable,
+          promo_code: appliedPromo 
         }),
       });
 
       const data = await res.json();
 
       if (data.success) {
-        await fetch("/api/cart", { method: "DELETE" }); // clear cart
-        await fetchCart(); // refresh store after clearing
-        
-        // Trigger Success overlay
+        await fetch("/api/cart", { method: "DELETE" }); 
+        await fetchCart(); 
         setOrderSuccess(true);
-
-        // Wait 2.5 seconds for animation to play, then redirect
-        setTimeout(() => {
-            window.location.href = "/orders";
-        }, 2500);
-
+        setTimeout(() => { window.location.href = "/orders"; }, 2500);
       } else {
         alert("Failed to place order: " + data.error);
         setPlacingOrder(false);
@@ -104,7 +157,6 @@ export default function CheckoutPage() {
     }
   }
 
-  // Loading State
   if (cartLoading || loadingAddrs) {
     return (
       <div className="min-h-screen bg-[#f1f3f6]">
@@ -119,7 +171,6 @@ export default function CheckoutPage() {
     );
   }
 
-  // Empty State
   if (items.length === 0 && !orderSuccess) {
     return (
       <div className="min-h-screen bg-[#f1f3f6]">
@@ -143,19 +194,14 @@ export default function CheckoutPage() {
 
         <main className="max-w-5xl mx-auto px-2 sm:px-4 flex flex-col lg:flex-row gap-4 items-start pt-20 md:pt-24">
           
-          {/* LEFT COLUMN: Delivery Address & Items */}
           <div className="flex-1 w-full space-y-4">
-            
-            {/* Address Selection (Horizontal & Compact) */}
             <div className="bg-white rounded-sm shadow-sm">
               <div className="px-4 py-3 bg-[#2874f0] rounded-t-sm flex justify-between items-center">
                  <h2 className="text-sm font-bold text-white uppercase tracking-wide flex items-center gap-2">
                    <span className="bg-white text-[#2874f0] w-5 h-5 flex items-center justify-center rounded text-xs">1</span> 
                    Delivery Address
                  </h2>
-                 <Link href="/profile" className="text-[13px] font-medium text-white hover:underline">
-                    Add New
-                 </Link>
+                 <Link href="/profile" className="text-[13px] font-medium text-white hover:underline">Add New</Link>
               </div>
 
               <div className="p-4">
@@ -172,23 +218,14 @@ export default function CheckoutPage() {
                       <label
                         key={addr.id}
                         className={`flex p-3 border rounded-sm cursor-pointer transition-all ${
-                          selectedAddressId === addr.id
-                            ? "border-[#2874f0] bg-[#f0f5ff]"
-                            : "border-gray-200 hover:bg-gray-50"
+                          selectedAddressId === addr.id ? "border-[#2874f0] bg-[#f0f5ff]" : "border-gray-200 hover:bg-gray-50"
                         }`}
                       >
-                        <input
-                          type="radio"
-                          name="address"
-                          value={addr.id}
-                          checked={selectedAddressId === addr.id}
-                          onChange={(e) => setSelectedAddressId(e.target.value)}
-                          className="mt-0.5 w-4 h-4 text-[#2874f0] border-gray-300 focus:ring-[#2874f0]"
-                        />
+                        <input type="radio" name="address" value={addr.id} checked={selectedAddressId === addr.id} onChange={(e) => setSelectedAddressId(e.target.value)} className="mt-0.5 w-4 h-4 text-[#2874f0] border-gray-300 focus:ring-[#2874f0]" />
                         <div className="ml-3 flex-1 min-w-0">
                           <div className="flex justify-between items-center mb-1">
                             <p className="text-[13px] font-medium text-gray-900 truncate pr-2">{addr.full_name}</p>
-                            <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-sm">WORK</span>
+                            <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-sm">HOME</span>
                           </div>
                           <p className="text-[12px] text-gray-600 truncate">{addr.address_line1}, {addr.city}</p>
                           <p className="text-[12px] text-gray-600 mt-0.5"><span className="font-medium text-gray-800">{addr.phone}</span></p>
@@ -200,7 +237,6 @@ export default function CheckoutPage() {
               </div>
             </div>
 
-            {/* Items Summary (Compact) */}
             <div className="bg-white rounded-sm shadow-sm">
               <div className="px-4 py-3 bg-[#2874f0] rounded-t-sm">
                  <h2 className="text-sm font-bold text-white uppercase tracking-wide flex items-center gap-2">
@@ -229,11 +265,62 @@ export default function CheckoutPage() {
                 ))}
               </div>
             </div>
-
           </div>
 
-          {/* RIGHT COLUMN: Price Breakup */}
           <div className="w-full lg:w-[320px] shrink-0 sticky top-24 space-y-4">
+            {/* PROMO CODE BOX */}
+            <div className="bg-white rounded-sm shadow-sm">
+              <div className="p-4 border-b border-gray-100">
+                <h2 className="text-[14px] font-bold text-gray-500 uppercase tracking-wide">Apply Promo Code</h2>
+              </div>
+              <div className="p-4">
+                {appliedPromo ? (
+                   <div className="bg-green-50 p-3 border border-green-200 rounded-sm">
+                     <div className="flex justify-between items-start">
+                        <div>
+                           <p className="text-sm font-bold text-green-700">{appliedPromo}</p>
+                           {isDiscountApplicable ? (
+                             <p className="text-[11px] font-bold text-green-600 mt-0.5">5% discount applied!</p>
+                           ) : (
+                             <p className="text-[11px] font-bold text-amber-700 mt-0.5">Tracking code active (No discount).</p>
+                           )}
+                        </div>
+                        <button onClick={removePromo} className="text-red-500 text-xs font-bold hover:underline">REMOVE</button>
+                     </div>
+                     {promoMessage.text && (
+                        <p className="text-[11px] mt-2 font-medium text-gray-600 leading-tight">
+                           {promoMessage.text}
+                        </p>
+                     )}
+                   </div>
+                ) : (
+                   <div>
+                      <div className="flex gap-2">
+                         <input
+                            type="text"
+                            value={promoCodeInput}
+                            onChange={(e) => setPromoCodeInput(e.target.value.toUpperCase())}
+                            placeholder="Enter Code"
+                            className="flex-1 border border-gray-300 rounded-sm px-3 py-2 outline-none focus:border-[#2874f0] text-sm uppercase"
+                         />
+                         <button
+                            onClick={handleApplyPromo}
+                            disabled={isApplyingPromo || !promoCodeInput.trim()}
+                            className="bg-[#2874f0] text-white px-5 py-2 rounded-sm font-bold text-sm disabled:bg-gray-400"
+                         >
+                            {isApplyingPromo ? "..." : "APPLY"}
+                         </button>
+                      </div>
+                      {promoMessage.text && (
+                         <p className={`text-[11px] mt-2 font-medium ${promoMessage.type === 'error' ? 'text-red-500' : 'text-gray-500'}`}>
+                            {promoMessage.text}
+                         </p>
+                      )}
+                   </div>
+                )}
+              </div>
+            </div>
+
             <div className="bg-white rounded-sm shadow-sm">
               <div className="p-4 border-b border-gray-100">
                 <h2 className="text-[14px] font-bold text-gray-500 uppercase tracking-wide">Price Details</h2>
@@ -245,12 +332,18 @@ export default function CheckoutPage() {
                   <span>₹{subtotal.toFixed(2)}</span>
                 </div>
                 
+                {/* DISCOUNT ROW (Sirf tab dikhega jab applicable ho) */}
+                {appliedPromo && isDiscountApplicable && (
+                  <div className="flex justify-between text-[14px] text-green-600 font-medium">
+                    <span>Discount (Promo Code)</span>
+                    <span>- ₹{discountAmount.toFixed(2)}</span>
+                  </div>
+                )}
+
                 <div className="flex justify-between text-[14px] text-[#212121]">
                   <span>Delivery Charges</span>
                   <span className="text-[#388e3c] font-medium">Free</span>
                 </div>
-
-                {/* Added Fees */}
                 <div className="flex justify-between text-[14px] text-[#212121]">
                   <span>Platform Fee</span>
                   <span>+ ₹{platformFee.toFixed(2)}</span>
@@ -267,61 +360,46 @@ export default function CheckoutPage() {
               </div>
             </div>
 
-            {/* Desktop Place Order Button */}
             <div className="hidden lg:block bg-white p-4 shadow-sm rounded-sm">
                 <button
                     onClick={handlePlaceOrder}
                     disabled={placingOrder || !selectedAddressId || items.length === 0}
                     className={`w-full py-3.5 rounded-sm font-bold text-white text-[15px] uppercase tracking-wide transition-colors ${
-                        placingOrder || !selectedAddressId || items.length === 0
-                        ? "bg-gray-400 cursor-not-allowed"
-                        : "bg-[#fb641b] hover:bg-[#e05615] shadow-sm active:scale-[0.98]"
+                        placingOrder || !selectedAddressId || items.length === 0 ? "bg-gray-400 cursor-not-allowed" : "bg-[#fb641b] hover:bg-[#e05615]"
                     }`}
                 >
                     {placingOrder ? "Placing Order..." : "Place Order (COD)"}
                 </button>
             </div>
-
-            <div className="flex items-center gap-3 p-4 text-[12px] font-medium text-gray-500 justify-center text-center leading-tight">
-              <svg className="w-6 h-6 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
-              Safe and Secure Payments. 100% Authentic products.
-            </div>
           </div>
-
         </main>
       </div>
 
-      {/* MOBILE FIXED BOTTOM BAR (Flipkart Style) */}
+      {/* Mobile view footer fix block */}
       <div className="fixed bottom-0 left-0 right-0 bg-white shadow-[0_-2px_10px_rgba(0,0,0,0.08)] border-t border-gray-200 p-3 flex items-center justify-between lg:hidden z-40">
         <div className="flex flex-col">
           <span className="text-[18px] font-bold text-[#212121] leading-none">₹{totalPayable.toFixed(2)}</span>
-          <span className="text-[11px] font-medium text-[#2874f0] mt-1 cursor-pointer" onClick={(e) => { window.scrollTo({top: 0, behavior: 'smooth'}); }}>View Details</span>
+          <span className="text-[11px] font-medium text-[#2874f0] mt-1 cursor-pointer" onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})}>View Details</span>
         </div>
         <button
             onClick={handlePlaceOrder}
             disabled={placingOrder || !selectedAddressId || items.length === 0}
-            className={`px-8 py-3 rounded-sm font-bold text-white text-[13px] uppercase tracking-wide transition-all ${
-                placingOrder || !selectedAddressId || items.length === 0
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-[#fb641b] active:scale-95"
+            className={`px-8 py-3 rounded-sm font-bold text-white text-[13px] uppercase tracking-wide ${
+                placingOrder || !selectedAddressId || items.length === 0 ? "bg-gray-400 cursor-not-allowed" : "bg-[#fb641b]"
             }`}
         >
             {placingOrder ? "Processing..." : "Place Order"}
         </button>
       </div>
 
-      {/* 🟢 SUCCESS ANIMATION OVERLAY (WITHOUT LOTTIE) */}
       {orderSuccess && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
-           
-           {/* Custom SVG Checkmark Animation */}
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm">
            <div className="w-24 h-24 mb-6 bg-green-500 rounded-full flex items-center justify-center shadow-[0_0_40px_rgba(34,197,94,0.6)] animate-in zoom-in-50 duration-500">
-             <svg className="w-12 h-12 text-white animate-[ping_0.5s_ease-out_forwards_0.3s]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+             <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
              </svg>
            </div>
-
-           <h2 className="text-white text-2xl font-bold mt-4 animate-in slide-in-from-bottom-4 duration-500 delay-300">Order Placed Successfully!</h2>
+           <h2 className="text-white text-2xl font-bold mt-4">Order Placed Successfully!</h2>
            <p className="text-gray-300 text-sm mt-2 animate-pulse">Redirecting to your orders...</p>
         </div>
       )}

@@ -212,6 +212,12 @@
       "namedRegex": "^/profile(?:/)?$"
     },
     {
+      "page": "/profile/partner",
+      "regex": "^/profile/partner(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/profile/partner(?:/)?$"
+    },
+    {
       "page": "/refund",
       "regex": "^/refund(?:/)?$",
       "routeKeys": {},

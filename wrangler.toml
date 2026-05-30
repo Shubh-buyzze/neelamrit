@@ -1,0 +1,19 @@
+name = "neelamrit"
+main = ".open-next/worker.js"
+compatibility_date = "2024-05-30"
+directory = ".open-next/assets"
+binding = "ASSETS"
+
+# Ye [vars] section aapki un API keys ke liye hai jo frontend me use hoti hain (Public Keys)
+[vars]
+NEXT_PUBLIC_BASE_URL = "https://neelamrit.in"
+NEXT_PUBLIC_SUPABASE_URL = "https://ptmnwbvrybzrwruvrrkk.supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0bW53YnZyeWJ6cndydXZycmtrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ3NjYyNDMsImV4cCI6MjA5MDM0MjI0M30.lYCeaJWmHPH3p6v0UWQIPoBEtR_kJW2bKciRCbp4J0g"
+NEXT_PUBLIC_TRUECALLER_KEY = "gMzdFd9af3801ccfc456e808d38309a3e99cb"
+
+NEXT_PUBLIC_FIREBASE_API_KEY= "AIzaSyCkg3mLTdj2sCp5r8XuRzqmtM-x8so4yQI"
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN= "neelamrit-df2df.firebaseapp.com"
+NEXT_PUBLIC_FIREBASE_PROJECT_ID= "neelamrit-df2df"
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET= "neelamrit-df2df.firebasestorage.app"
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID= "642798579626"
+NEXT_PUBLIC_FIREBASE_APP_ID= "1:642798579626:web:0ff4777a9d66721ba985d3"
