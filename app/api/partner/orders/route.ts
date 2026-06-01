@@ -20,7 +20,7 @@ export async function GET() {
 
     // 2. 🟢 FIX: Use Admin Client to bypass RLS and fetch customer orders
     const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      (process.env.NEXT_PUBLIC_SUPABASE_URL || "https://dummy.supabase.co"),
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 

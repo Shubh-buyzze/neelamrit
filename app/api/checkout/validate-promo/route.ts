@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      (process.env.NEXT_PUBLIC_SUPABASE_URL || "https://dummy.supabase.co"),
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 

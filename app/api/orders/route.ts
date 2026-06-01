@@ -68,7 +68,7 @@ export async function POST(req: Request) {
 
     // 2. 🟢 FIX: Admin Client use karein taki RLS security update ko block na kar sake
     const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      (process.env.NEXT_PUBLIC_SUPABASE_URL || "https://dummy.supabase.co"),
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 

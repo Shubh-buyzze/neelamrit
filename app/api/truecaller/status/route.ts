@@ -24,7 +24,7 @@ export async function GET(req: Request) {
   // 🟢 MAIN FIX: Supabase client ab function ke ANDAR banega
   // Isse build time par variables ki zaroorat nahi padegi aur crash nahi hoga.
   const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    (process.env.NEXT_PUBLIC_SUPABASE_URL || "https://dummy.supabase.co"),
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { autoRefreshToken: false, persistSession: false } }
   );

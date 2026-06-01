@@ -19,7 +19,7 @@ async function processTruecallerAuth(
   // ✅ FIX: Supabase client ab function ke ANDAR banta hai
   // Build time pe yeh line execute hi nahi hogi — sirf actual request pe chalegi
   const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    (process.env.NEXT_PUBLIC_SUPABASE_URL || "https://dummy.supabase.co"),
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
