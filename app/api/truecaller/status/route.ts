@@ -17,12 +17,6 @@ import { createClient } from "@supabase/supabase-js";
 export const dynamic    = "force-dynamic";
 export const revalidate = 0;
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { autoRefreshToken: false, persistSession: false } }
-);
-
 // These headers prevent ALL layers of caching: Next.js, CDN, browser
 const NO_CACHE_HEADERS = {
   "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
@@ -32,6 +26,15 @@ const NO_CACHE_HEADERS = {
 };
 
 export async function GET(req: Request) {
+  // 🔥 FIX: Supabase client moved INSIDE the function with dummy fallbacks
+  // This prevents Cloudflare build crashes when env vars are missing at build time.
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://dummy.supabase.co";
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "dummy_key";
+
+  const supabase = createClient(supabaseUrl, supabaseKey, { 
+    auth: { autoRefreshToken: false, persistSession: false } 
+  });
+
   const { searchParams } = new URL(req.url);
   const nonce = searchParams.get("nonce");
 
