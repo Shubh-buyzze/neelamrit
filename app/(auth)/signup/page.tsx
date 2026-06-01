@@ -15,10 +15,12 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import dynamic from "next/dynamic";
+import nextDynamic from "next/dynamic";
 import { createBrowserClient } from "@supabase/ssr";
 
-const DotLottiePlayer = dynamic(
+export const dynamic = 'force-dynamic'
+
+const DotLottiePlayer = nextDynamic(
   () => import("@dotlottie/react-player").then((m) => m.DotLottiePlayer),
   { ssr: false }
 );

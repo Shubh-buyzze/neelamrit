@@ -2,10 +2,12 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import dynamic from "next/dynamic";
+import nextDynamic from "next/dynamic";
 import { createBrowserClient } from "@supabase/ssr";
 
-const DotLottiePlayer = dynamic(
+export const dynamic = 'force-dynamic'
+
+const DotLottiePlayer = nextDynamic(
   () => import("@dotlottie/react-player").then((m) => m.DotLottiePlayer),
   { ssr: false }
 );
@@ -21,7 +23,6 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   
-  // Multi-step manual login state
   const [manualStep, setManualStep] = useState<1 | 2>(1);
 
   const [tcStatus, setTcStatus] = useState<"idle" | "loading" | "polling" | "success" | "error">("idle");
@@ -42,11 +43,9 @@ export default function LoginPage() {
     return () => stopPolling();
   }, []);
 
-  // 🟢 AUTO-TRIGGER LOGIC
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("auto") === "true") {
-      // Thoda delay taaki page load ho jaye smoothly fir auto trigger ho
       const timer = setTimeout(() => {
         handleTruecallerLogin();
       }, 800);
@@ -67,7 +66,6 @@ export default function LoginPage() {
     setStatusMsg("");
   }
 
-  // ── TRUECALLER LOGIN ───────────────────────────────────────────────────────
   function handleTruecallerLogin() {
     setTcStatus("loading");
     setStatusMsg("Opening Truecaller...");
@@ -121,9 +119,7 @@ export default function LoginPage() {
             return;
           }
 
-          // 🟢 SET AUTO-LOGIN FLAG ON SUCCESS
           localStorage.setItem("neelamrit_auth_flag", "true");
-
           window.location.assign(data.is_new_user ? "/complete-profile" : "/");
 
         } catch (fetchErr: unknown) {
@@ -138,7 +134,6 @@ export default function LoginPage() {
     }, 90_000);
   }
 
-  // ── MANUAL LOGIN LOGIC ─────────────────────────────────────────────────────
   function handleEmailContinue() {
     if (!email.trim() || !email.includes("@")) {
       setErrorMsg("Please enter a valid email address.");
@@ -176,7 +171,6 @@ export default function LoginPage() {
 
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      // 🟢 SET AUTO-LOGIN FLAG ON SUCCESS (MANUAL LOGIN)
       localStorage.setItem("neelamrit_auth_flag", "true");
 
       const { data: prof } = await supabase
@@ -201,7 +195,6 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 font-sans text-gray-900">
       <div className="relative w-full max-w-4xl mx-auto bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col md:flex-row">
 
-        {/* ── Left decorative panel (Desktop) ────────────────────────────── */}
         <div className="flex-1 bg-gray-50 p-12 hidden md:flex flex-col items-center justify-center border-r border-gray-100">
           <DotLottiePlayer src="/login-anim.lottie" autoplay loop className="w-64 h-64" />
           <h2 className="font-serif text-2xl font-medium text-gray-900 mt-6 tracking-tight text-center">
@@ -212,7 +205,6 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* ── Right: Login Form ──────────────────────────────────────────── */}
         <div className="flex-1 p-8 md:p-12 flex flex-col justify-center">
 
           <div className="mb-8">
@@ -224,7 +216,6 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {/* Status & Error Messages */}
           {statusMsg && (
             <div className="mb-6 flex items-center gap-3 text-sm font-medium text-gray-700 animate-in fade-in duration-300">
               <span className="w-4 h-4 border-2 border-gray-300 border-t-gray-800 rounded-full animate-spin" />
@@ -246,7 +237,6 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* ── Truecaller Button (Mobile Only) ──────────────────────────── */}
           {isMobile && manualStep === 1 && (
             <div className="mb-6 animate-in fade-in">
               <button
@@ -254,22 +244,9 @@ export default function LoginPage() {
                 disabled={isLoading || isSuccess}
                 className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-800 hover:bg-gray-50 transition-colors disabled:opacity-50"
               >
-                {/* 1. Truecaller Logo (Round) */}
-                <img 
-                  src="/truecaller-logo.webp" 
-                  alt="Truecaller Icon" 
-                  className="w-5 h-5 object-contain" 
-                />
-                
-                {/* 2. Normal Text */}
+                <img src="/truecaller-logo.webp" alt="Truecaller Icon" className="w-5 h-5 object-contain" />
                 <span>1-click Login with</span>
-                
-                {/* 3. Truecaller Text (Name Image) */}
-                <img 
-                  src="/truecaller-text.webp" 
-                  alt="Truecaller" 
-                  className="h-4 object-contain mt-0.5" 
-                />
+                <img src="/truecaller-text.webp" alt="Truecaller" className="h-4 object-contain mt-0.5" />
               </button>
 
               <div className="flex items-center gap-3 my-6">
@@ -282,10 +259,7 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* ── Manual Login (Multi-step) ────────────────────────────────── */}
           <div className="space-y-5">
-            
-            {/* Step 1: Email */}
             {manualStep === 1 ? (
               <div className="animate-in slide-in-from-right-4 fade-in duration-300">
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -310,7 +284,6 @@ export default function LoginPage() {
                 </button>
               </div>
             ) : (
-              /* Step 2: Password */
               <div className="animate-in slide-in-from-right-4 fade-in duration-300">
                 <div className="flex justify-between items-center mb-4 p-3 border border-gray-200 rounded-md bg-gray-50">
                   <span className="text-sm text-gray-600 truncate mr-4">{email}</span>
@@ -351,7 +324,6 @@ export default function LoginPage() {
             )}
           </div>
 
-          {/* Footer */}
           <div className="mt-8 pt-6 border-t border-gray-100 text-center text-sm text-gray-500">
             Don't have an account?{" "}
             <Link href="/signup" className="text-gray-900 font-medium hover:underline ml-1">
