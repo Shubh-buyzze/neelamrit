@@ -10,19 +10,20 @@ import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
-// ── Service-role client ───────────────────────────────────────────────────────
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { autoRefreshToken: false, persistSession: false } }
-);
-
 // ── Core logic ────────────────────────────────────────────────────────────────
 async function processTruecallerAuth(
   accessToken: string,
   requestId: string,
   profileEndpoint: string
 ): Promise<NextResponse> {
+  // ✅ FIX: Supabase client ab function ke ANDAR banta hai
+  // Build time pe yeh line execute hi nahi hogi — sirf actual request pe chalegi
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+
   console.log("[TC] ▶ Start | requestId:", requestId);
 
   const profileRes = await fetch(profileEndpoint, {
@@ -59,8 +60,7 @@ async function processTruecallerAuth(
 
   let userId    = "";
   let isNewUser = false;
-  
-  // 🟢 FIX: Changed Promise<any>[] to any[] to satisfy TypeScript strict mode
+
   const parallelTasks: any[] = [];
 
   const { data: existingProfile } = await supabase
@@ -101,7 +101,7 @@ async function processTruecallerAuth(
         const { data: listData } = await supabase.auth.admin.listUsers({ perPage: 1000 });
         const recoveredUser = listData?.users?.find((u) => u.email === ghostEmail);
         if (!recoveredUser) throw new Error("Ghost email exists but user not found");
-        
+
         userId    = recoveredUser.id;
         isNewUser = false;
         parallelTasks.push(supabase.auth.admin.updateUserById(userId, { password: tempPassword }));
@@ -134,14 +134,16 @@ async function processTruecallerAuth(
   );
 
   parallelTasks.push(
-    supabase.from("tc_auth_requests").upsert({
+    supabase.from("tc_auth_requests").upsert(
+      {
         nonce:         requestId,
         phone,
         temp_password: tempPassword,
         status:        "success",
         is_new_user:   isNewUser,
         created_at:    now,
-      }, { onConflict: "nonce" }
+      },
+      { onConflict: "nonce" }
     )
   );
 
@@ -160,7 +162,7 @@ export async function POST(req: Request) {
       body = await req.json();
     } else {
       const text = await req.text();
-      try { body = JSON.parse(text); } 
+      try { body = JSON.parse(text); }
       catch { body = Object.fromEntries(new URLSearchParams(text).entries()); }
     }
 
