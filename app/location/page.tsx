@@ -6,6 +6,8 @@ import Navbar from "@/components/Navbar";
 import CartDrawer from "@/components/CartDrawer";
 import LocationBox, { Location } from "@/components/LocationBox";
 
+export const dynamic = 'force-dynamic'
+
 export default function LocationPage() {
   const [addresses, setAddresses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);

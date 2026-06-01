@@ -6,6 +6,8 @@ import { useCartStore } from "@/lib/store/useCartStore";
 import Navbar from "@/components/Navbar";
 import Link from "next/link";
 
+export const dynamic = 'force-dynamic'
+
 type Address = {
   id: string;
   full_name: string;

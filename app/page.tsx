@@ -13,6 +13,8 @@ import { motion } from "framer-motion";
 import AnnotatedProduct from "@/components/AnnotatedProduct";
 import LeaderboardSection from "@/components/LeaderboardSection";
 
+export const dynamic = 'force-dynamic'
+
 const PRODUCTS = [
   {
     id: 1,

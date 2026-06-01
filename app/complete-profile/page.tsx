@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 
+export const dynamic = 'force-dynamic'
+
 type ProfileForm = {
   full_name:    string;
   email:        string;

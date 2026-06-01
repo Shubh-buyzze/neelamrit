@@ -3,6 +3,8 @@
 
 import React, { useEffect, useState } from "react";
 
+export const dynamic = 'force-dynamic'
+
 type InventoryItem = {
   id: string;
   product_id: string;

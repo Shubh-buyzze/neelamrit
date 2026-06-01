@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import LocationPicker from "@/components/LocationPicker";
 
+export const dynamic = 'force-dynamic'
+
 type Address = {
   id: string;
   full_name: string;

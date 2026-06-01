@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 
+export const dynamic = 'force-dynamic'
+
 export default function PartnerDashboardPage() {
   const [step, setStep] = useState<
     "loading" | "intro" | "form" | "dashboard"

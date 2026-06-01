@@ -1,6 +1,8 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import Link from "next/link";
 
+export const dynamic = 'force-dynamic'
+
 // ----- SVG Icons (neutral, professional) -----
 const ShoppingBagIcon = () => (
   <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">

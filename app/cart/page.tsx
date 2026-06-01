@@ -6,6 +6,8 @@ import Link from "next/link";
 import { useCartStore } from "@/lib/store/useCartStore";
 import Navbar from "@/components/Navbar";
 
+export const dynamic = 'force-dynamic'
+
 export default function CartPage() {
   const { items, loading, fetchCart, updateQty, removeItem } = useCartStore();
   const [updatingId, setUpdatingId] = useState<string | null>(null);

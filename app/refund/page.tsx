@@ -4,6 +4,8 @@
 import Navbar from "@/components/Navbar";
 import Link from "next/link";
 
+export const dynamic = 'force-dynamic'
+
 export default function RefundPage() {
   return (
     <div className="min-h-screen bg-[#fdfaf6]">

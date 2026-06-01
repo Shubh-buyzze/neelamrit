@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+export const dynamic = 'force-dynamic'
+
 type Product = {
   id: string;
   name: string;

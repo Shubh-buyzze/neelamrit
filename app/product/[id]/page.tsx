@@ -4,6 +4,8 @@ import Navbar from "@/components/Navbar";
 import AddToCartBtn from "@/components/AddToCartBtn";
 import Link from "next/link";
 
+export const dynamic = 'force-dynamic'
+
 // 🚀 Professional SEO Optimization (For Google/WhatsApp sharing)
 export async function generateMetadata(props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
