@@ -10,22 +10,19 @@ import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
+// ── Service-role client ───────────────────────────────────────────────────────
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { autoRefreshToken: false, persistSession: false } }
+);
+
 // ── Core logic ────────────────────────────────────────────────────────────────
 async function processTruecallerAuth(
   accessToken: string,
   requestId: string,
   profileEndpoint: string
 ): Promise<NextResponse> {
-  
-  // 🔥 FIX: Supabase client ko globally se hata kar function ke andar laaye hain
-  // Dummy fallbacks ke sath taaki Cloudflare build time par crash na kare.
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://dummy.supabase.co";
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "dummy_key";
-  
-  const supabase = createClient(supabaseUrl, supabaseKey, { 
-    auth: { autoRefreshToken: false, persistSession: false } 
-  });
-
   console.log("[TC] ▶ Start | requestId:", requestId);
 
   const profileRes = await fetch(profileEndpoint, {

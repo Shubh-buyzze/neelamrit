@@ -3,11 +3,6 @@
  * ║  FILE:  src/app/api/truecaller/status/route.ts                          ║
  * ║  Frontend yahan poll karta hai har 2s mein                              ║
  * ╚══════════════════════════════════════════════════════════════════════════╝
- *
- * Returns: { status: "pending" | "success", phone, temp_password, is_new_user }
- *
- * CRITICAL: force-dynamic + no-store = ZERO caching.
- * Without this, Next.js serves the first cached "pending" forever.
  */
 
 import { NextResponse } from "next/server";
@@ -26,14 +21,13 @@ const NO_CACHE_HEADERS = {
 };
 
 export async function GET(req: Request) {
-  // 🔥 FIX: Supabase client moved INSIDE the function with dummy fallbacks
-  // This prevents Cloudflare build crashes when env vars are missing at build time.
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://dummy.supabase.co";
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "dummy_key";
-
-  const supabase = createClient(supabaseUrl, supabaseKey, { 
-    auth: { autoRefreshToken: false, persistSession: false } 
-  });
+  // 🟢 MAIN FIX: Supabase client ab function ke ANDAR banega
+  // Isse build time par variables ki zaroorat nahi padegi aur crash nahi hoga.
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
 
   const { searchParams } = new URL(req.url);
   const nonce = searchParams.get("nonce");
