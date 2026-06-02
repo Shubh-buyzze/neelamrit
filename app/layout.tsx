@@ -13,9 +13,20 @@ export const metadata: Metadata = {
     template: "%s | NEELAMRIT",
   },
   description: "Experience authentic Lakadwa sweets made with 100% pure jaggery, desi ghee, and zero refined sugar. 12-hour express delivery in Varanasi.",
-  keywords: ["Indian sweets", "jaggery sweets", "Lakadwa", "Varanasi sweets", "healthy sweets", "pure desi ghee sweets"],
+  keywords: ["Indian sweets", "jaggery sweets", "Lakadwa", "Varanasi sweets", "healthy sweets", "pure desi ghee sweets", "Neelamrit sweets"],
   alternates: {
     canonical: "/",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
   },
   openGraph: {
     title: "NEELAMRIT – Traditional Indian Sweets",
@@ -53,6 +64,7 @@ export default function RootLayout({
     "name": "NEELAMRIT",
     "image": "https://neelamrit.in/banner.webp",
     "description": "Traditional Indian Sweets made with pure jaggery.",
+    "priceRange": "₹₹",
     "address": {
       "@type": "PostalAddress",
       "addressLocality": "Mughalsarai, Chandauli",
